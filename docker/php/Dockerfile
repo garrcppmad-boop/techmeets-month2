@@ -24,3 +24,5 @@ WORKDIR /var/www/html
 
 # 権限設定
 RUN chown -R www-data:www-data /var/www/html
+
+RUN ln -sf /usr/share/zoneinfo/Asia/Tokyo /etc/localtime
