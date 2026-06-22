@@ -1,0 +1,11 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(mv \"c:/Users/Jambr/techmeets/month2/laravel-docker-app/docker/php/Dockerfile.txt\" \"c:/Users/Jambr/techmeets/month2/laravel-docker-app/docker/php/Dockerfile\")",
+      "Bash(docker compose *)"
+    ],
+    "additionalDirectories": [
+      "c:\\Users\\Jambr\\techmeets\\month2\\laravel-docker-app\\docker\\php"
+    ]
+  }
+}
