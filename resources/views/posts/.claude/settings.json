@@ -1,0 +1,15 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(gh repo *)"
+    ],
+    "additionalDirectories": [
+      "c:\\Users\\Jambr\\techmeets\\month2\\laravel-docker-app\\app\\Http\\Controllers",
+      "c:\\Users\\Jambr\\techmeets\\month2\\laravel-docker-app\\database\\migrations",
+      "c:\\Users\\Jambr\\techmeets\\month2\\laravel-docker-app\\app\\Models",
+      "c:\\Users\\Jambr\\techmeets\\month2\\laravel-docker-app\\resources\\views\\layouts",
+      "c:\\Users\\Jambr\\techmeets\\month2\\laravel-docker-app\\resources\\views",
+      "c:\\Users\\Jambr\\techmeets\\month2\\laravel-docker-app\\routes"
+    ]
+  }
+}
