@@ -6,21 +6,25 @@ use Illuminate\Database\Eloquent\Model;
 
 class Post extends Model
 {
-    // 一括代入を許可するカラム（$fillable未設定だとcreate()が使えない）
     protected $fillable = [
+        'user_id',
         'title',
         'content',
-        'user_id',
+        'category',
     ];
 
-    // created_at をCarbonオブジェクトに変換（->format()が使えるようになる）
-    protected $casts = [
-        'created_at' => 'datetime',
-    ];
+    public static function categories(): array
+    {
+        return ['技術', 'ライフスタイル', '学習', 'その他'];
+    }
 
-    // belongsTo: 投稿(多) → ユーザー(1)
     public function user()
     {
         return $this->belongsTo(User::class);
+    }
+
+    public function isOwnedBy(int $userId): bool
+    {
+        return $this->user_id === $userId;
     }
 }
