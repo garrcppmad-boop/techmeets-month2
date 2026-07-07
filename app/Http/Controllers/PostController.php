@@ -3,14 +3,20 @@
 namespace App\Http\Controllers;
 
 use App\Models\Post;
+use App\Services\PostService;
+use App\Repositories\PostRepository;
 use Illuminate\Http\Request;
 
 class PostController extends Controller
 {
-    // 一覧・詳細は未ログインでも閲覧可能
+    public function __construct(
+        private PostService $postService,
+        private PostRepository $postRepository
+    ) {}
+
     public function index()
     {
-        $posts = Post::with('user')->latest()->paginate(10);
+        $posts = $this->postRepository->getPublished();
         return view('posts.index', compact('posts'));
     }
 
@@ -18,8 +24,6 @@ class PostController extends Controller
     {
         return view('posts.show', compact('post'));
     }
-
-    // 以下はルートの auth ミドルウェアでログイン済みのみ到達できる
 
     public function create()
     {
@@ -31,50 +35,43 @@ class PostController extends Controller
     {
         $validated = $request->validate([
             'title'    => 'required|max:200',
-            'content'  => 'required',
+            'content'  => 'required|max:10000',
             'category' => 'required|in:' . implode(',', Post::categories()),
         ]);
 
-        $validated['user_id'] = auth()->id();
+        $post = $this->postService->createPost(
+            array_merge($validated, ['user_id' => auth()->id()])
+        );
 
-        $post = Post::create($validated);
         return redirect()->route('posts.show', $post)->with('success', '投稿を作成しました');
     }
 
     public function edit(Post $post)
     {
-        // 自分の投稿以外は編集不可
-        if (! $post->isOwnedBy(auth()->id())) {
-            abort(403, 'この操作は許可されていません');
-        }
-
+        $this->authorize('update', $post);
         $categories = Post::categories();
         return view('posts.edit', compact('post', 'categories'));
     }
 
     public function update(Request $request, Post $post)
     {
-        if (! $post->isOwnedBy(auth()->id())) {
-            abort(403, 'この操作は許可されていません');
-        }
+        $this->authorize('update', $post);
 
         $validated = $request->validate([
             'title'    => 'required|max:200',
-            'content'  => 'required',
+            'content'  => 'required|max:10000',
             'category' => 'required|in:' . implode(',', Post::categories()),
         ]);
 
-        $post->update($validated);
+        $post = $this->postService->updatePost($post, $validated);
+
         return redirect()->route('posts.show', $post)->with('success', '投稿を更新しました');
     }
 
     public function destroy(Post $post)
     {
-        if (! $post->isOwnedBy(auth()->id())) {
-            abort(403, 'この操作は許可されていません');
-        }
-
-        $post->delete();
+        $this->authorize('delete', $post);
+        $this->postService->deletePost($post);
         return redirect()->route('posts.index')->with('success', '投稿を削除しました');
     }
 }
