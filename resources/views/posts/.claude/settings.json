@@ -13,7 +13,11 @@
       "c:\\Users\\Jambr\\techmeets\\month2\\laravel-docker-app\\resources\\views\\layouts",
       "c:\\Users\\Jambr\\techmeets\\month2\\laravel-docker-app\\resources\\views",
       "c:\\Users\\Jambr\\techmeets\\month2\\laravel-docker-app\\routes",
-      "c:\\Users\\Jambr\\techmeets\\month2\\laravel-docker-app"
+      "c:\\Users\\Jambr\\techmeets\\month2\\laravel-docker-app",
+      "c:\\Users\\Jambr\\techmeets\\month2\\laravel-docker-app\\app\\Repositories",
+      "c:\\Users\\Jambr\\techmeets\\month2\\laravel-docker-app\\app\\Services",
+      "c:\\Users\\Jambr\\techmeets\\month2\\laravel-docker-app\\app\\Policies",
+      "c:\\Users\\Jambr\\techmeets\\month2\\laravel-docker-app\\app\\Providers"
     ]
   }
 }

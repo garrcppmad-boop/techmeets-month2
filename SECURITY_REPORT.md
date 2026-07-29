@@ -3,141 +3,140 @@
 **対象アプリ:** techmeets-month2 (Laravel + Breeze)  
 **実施日:** 2026-07-06  
 **対象ブランチ:** week7/blog-system  
+**テスト方法:** 静的コード解析 + 実行環境での動的テスト
 
 ---
 
-## 総合評価
+## テスト結果サマリー
 
-| カテゴリ | 評価 |
+| テスト項目 | 結果 |
 |---|---|
-| 認証・認可 | ✅ 良好 |
-| XSS対策 | ✅ 良好 |
-| CSRF対策 | ✅ 良好 |
-| SQLインジェクション | ✅ 良好 |
-| 入力バリデーション | ⚠️ 一部不足 |
-| マスアサインメント | ⚠️ 要改善 |
-| その他 | ⚠️ 軽微な問題あり |
+| XSS対策 | ✅ PASS |
+| CSRF対策 | ✅ PASS |
+| SQLインジェクション対策 | ✅ PASS |
+| パスワードハッシュ化（必須） | ✅ PASS |
+| 強力なアルゴリズム（bcrypt） | ✅ PASS |
+| ソルト付きハッシュ | ✅ PASS |
 
 ---
 
-## 問題一覧
+## 1. XSS（クロスサイトスクリプティング）対策
 
-### 🟡 中 : Post の content にmax制約なし
+### テスト内容
+悪意のあるスクリプトタグを入力値として渡した場合に、HTMLとして実行されないか検証。
 
-**ファイル:** `app/Http/Controllers/PostController.php` 32行目  
-**内容:**  
-```php
-'content' => 'required',  // max制約がない
+### 実行テスト
 ```
-`content` フィールドに文字数制限がないため、極端に大きなデータを送信されると  
-メモリ不足やレスポンス遅延を引き起こす可能性がある。
-
-**修正:**
-```php
-'content' => 'required|max:10000',
+入力値:  <script>alert("XSS")</script>
+出力値:  &lt;script&gt;alert(&quot;XSS&quot;)&lt;/script&gt;
+結果:    OK（タグが無効化されブラウザで実行されない）
 ```
+
+### 確認ポイント
+- ビュー全体（30ファイル）を検査した結果、`{!! !!}`（エスケープなし出力）は **0件**
+- 全ての変数出力が `{{ }}` による自動エスケープを使用
+
+### 判定: ✅ PASS
 
 ---
 
-### 🟡 中 : user_id が Post モデルの $fillable に含まれている
+## 2. CSRF（クロスサイトリクエストフォージェリ）対策
 
-**ファイル:** `app/Models/Post.php` 9行目  
-**内容:**
-```php
-protected $fillable = [
-    'user_id',  // ← 本来サーバー側で設定すべき値
-    'title',
-    'content',
-    'category',
-];
-```
-`user_id` を `$fillable` に入れると、将来的に別のメソッドで  
-`Post::create($request->all())` のような書き方をした際に  
-ユーザーIDを書き換えられるリスクがある。
+### テスト内容
+全POSTフォームに `@csrf` トークンが含まれているか検査。
 
-**修正:** `user_id` を `$fillable` から除外し、直接代入する
-```php
-protected $fillable = ['title', 'content', 'category'];
+### 確認結果
+`@csrf` が含まれているファイル（24箇所）：
 
-// controller側
-$post = Post::create($validated);
-$post->user_id = auth()->id();
-$post->save();
-```
+| ファイル | 件数 |
+|---|---|
+| auth/login, register, forgot-password 等 | 8箇所 |
+| posts/create, edit, show（削除フォーム） | 3箇所 |
+| threads/create, show（削除・レスフォーム） | 4箇所 |
+| products/create, edit, index, show | 4箇所 |
+| profile/パスワード変更・プロフィール更新 | 3箇所 |
+| layouts/navigation（ログアウト） | 2箇所 |
+
+- CSRF除外リスト（`except`）への追加: **0件**
+- LaravelのCSRFミドルウェアはデフォルトで全POSTルートに適用
+
+### 判定: ✅ PASS
 
 ---
 
-### 🟢 低 : ReplyController でスレッド帰属チェックなし
+## 3. SQLインジェクション対策
 
-**ファイル:** `app/Http/Controllers/ReplyController.php` 25行目  
-**内容:**  
+### テスト内容
+悪意のあるSQL文字列を検索条件に渡した場合、クエリが安全に処理されるか検証。
+
+### 実行テスト
+```
+入力値:  ' OR '1'='1
+実行SQL: select * from `posts` where `title` = ?
+バインド値: ["' OR '1'='1"]
+結果:    OK（プレースホルダー ? でバインドされ、SQL文として解釈されない）
+```
+
+### 確認ポイント
+- 危険な生クエリ（`whereRaw`, `selectRaw`, `DB::statement`, `DB::unprepared`）の使用: **0件**
+- 全データベース操作が Eloquent ORM のパラメータバインディングを使用
+
+### 判定: ✅ PASS
+
+---
+
+## 4. パスワードハッシュ化
+
+### テスト内容
+パスワードが平文でなくハッシュ化されて保存されるか、強力なアルゴリズムが使用されているか、
+同じパスワードでも毎回異なるハッシュ値（ソルト付き）になるか検証。
+
+### 実行テスト
+```
+入力パスワード:  TestPassword123!
+
+--- ハッシュ化確認 ---
+ハッシュ値: $2y$12$fdzZMVw8lGwxj2Koz4uI7OKfltwuDLftNxgU1xApOoS.j5oFmX7Tm
+bcrypt使用:  YES（$2y$ はbcryptの識別子）
+コスト係数:  12（2^12 = 4096回のハッシュ演算 → ブルートフォース耐性）
+
+--- 検証テスト ---
+正しいパスワードで検証: OK（一致）
+誤ったパスワードで検証: OK（不一致）
+
+--- ソルト確認 ---
+同じパスワードで2回ハッシュ化 → 異なるハッシュ値: OK（ソルトが異なる）
+```
+
+### ハッシュ値の読み方
+```
+$2y $ 12 $ fdzZMVw8lGwxj2Koz4uI7O ... 
+ ↑     ↑    ↑
+アルゴリズム  コスト  ソルト＋ハッシュ（22文字のソルト含む）
+```
+
+### 実装確認（ソースコード）
 ```php
-public function destroy(Thread $thread, Reply $reply)
-{
-    if (! $reply->isOwnedBy(auth()->id())) {
-        abort(403);
-    }
-    // $reply が $thread に属するかのチェックがない
-```
-`DELETE /threads/99/replies/5` のように、別スレッドのURLを経由して  
-自分のレスを削除できてしまう（実害は限定的だが論理的に不正）。
+// RegisteredUserController.php
+'password' => Hash::make($request->password),  // 登録時
 
-**修正:**
-```php
-if ($reply->thread_id !== $thread->id) {
-    abort(404);
-}
+// NewPasswordController.php
+'password' => Hash::make($request->password),  // パスワードリセット時
+
+// PasswordController.php
+'password' => Hash::make($validated['password']),  // パスワード変更時
 ```
+全ての箇所で `Hash::make()` を使用。平文保存: **0件**
+
+### 判定: ✅ PASS（bcrypt / ソルト付き / 平文保存なし）
 
 ---
 
-### 🔵 情報 : HTTPS の強制設定なし
+## 既知の改善点（前回レポートより）
 
-**ファイル:** `.env`  
-**内容:**  
-本番環境では `APP_URL` が `https://` で始まるべきだが、現在は `http://localhost`。  
-セッションクッキーをHTTPS限定にする設定も未適用。
-
-**修正（本番デプロイ時）:**
-```
-APP_URL=https://your-domain.com
-SESSION_SECURE_COOKIE=true
-FORCE_HTTPS=true
-```
-
----
-
-### 🔵 情報 : ProductController がルートに未登録
-
-**ファイル:** `routes/web.php`  
-**内容:**  
-`ProductController` は存在するが `web.php` に対応ルートがない。  
-`/products` にアクセスすると 404 になる。  
-不要なコントローラーは削除するか、ルートを追加すること。
-
----
-
-## 問題なし（対策済み）の項目
-
-| 項目 | 実装箇所 | 評価 |
+| 優先度 | 問題 | 対象ファイル |
 |---|---|---|
-| **XSS対策** | Bladeの `{{ }}` が自動エスケープ | ✅ |
-| **CSRF対策** | 全フォームに `@csrf` | ✅ |
-| **SQLインジェクション** | Eloquent の パラメータバインディング | ✅ |
-| **認証ガード** | `Route::middleware('auth')` で保護 | ✅ |
-| **認可（所有権）** | `isOwnedBy()` で自分のデータのみ操作可能 | ✅ |
-| **マスアサインメント** | モデルに `$fillable` を明示 | ✅ |
-| **ブルートフォース対策** | Breeze の RateLimiter（5回/分） | ✅ |
-| **パスワードハッシュ** | Breeze が `bcrypt` で自動ハッシュ | ✅ |
-| **バリデーション** | 全ミューテーション操作で `validate()` | ✅ |
-
----
-
-## 修正優先度
-
-| 優先度 | 問題 |
-|---|---|
-| 高 | `content` フィールドに `max` 制約を追加 |
-| 中 | `user_id` を `$fillable` から除外 |
-| 低 | Reply のスレッド帰属チェックを追加 |
-| 本番時 | HTTPS強制・セキュアクッキーを設定 |
+| 🟡 中 | Post の `content` に文字数制限なし | PostController 32行目 |
+| 🟡 中 | `user_id` が `$fillable` に含まれている | Post モデル |
+| 🟢 低 | Reply のスレッド帰属チェックなし | ReplyController 25行目 |
+| 🔵 情報 | 本番環境でのHTTPS強制設定が必要 | .env |

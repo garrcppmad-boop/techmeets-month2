@@ -18,6 +18,11 @@
                     <x-nav-link :href="route('posts.index')" :active="request()->routeIs('posts*')">
                         ブログ
                     </x-nav-link>
+                    @auth
+                        <x-nav-link :href="route('tasks.index')" :active="request()->routeIs('tasks*')">
+                            タスク管理
+                        </x-nav-link>
+                    @endauth
                 </div>
             </div>
 
@@ -79,6 +84,11 @@
             <x-responsive-nav-link :href="route('posts.index')" :active="request()->routeIs('posts*')">
                 ブログ
             </x-responsive-nav-link>
+            @auth
+                <x-responsive-nav-link :href="route('tasks.index')" :active="request()->routeIs('tasks*')">
+                    タスク管理
+                </x-responsive-nav-link>
+            @endauth
         </div>
 
         <!-- Responsive Settings Options -->
