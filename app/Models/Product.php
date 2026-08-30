@@ -12,6 +12,7 @@ class Product extends Model
         'description',
         'stock',
         'category',
+        'image_path',
     ];
 
     public static function categories(): array

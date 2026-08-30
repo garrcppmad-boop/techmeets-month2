@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Models\Product;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Storage;
 
 class ProductController extends Controller
 {
@@ -32,7 +33,13 @@ class ProductController extends Controller
             'description' => 'nullable',
             'stock'       => 'required|integer|min:0',
             'category'    => 'required|in:' . implode(',', Product::categories()),
+            'image'       => 'nullable|image|max:2048',
         ]);
+
+        if ($request->hasFile('image')) {
+            $validated['image_path'] = $request->file('image')->store('products', 's3');
+        }
+        unset($validated['image']);
 
         $product = Product::create($validated);
         return redirect()->route('products.show', $product)->with('success', '商品を登録しました');
@@ -52,7 +59,16 @@ class ProductController extends Controller
             'description' => 'nullable',
             'stock'       => 'required|integer|min:0',
             'category'    => 'required|in:' . implode(',', Product::categories()),
+            'image'       => 'nullable|image|max:2048',
         ]);
+
+        if ($request->hasFile('image')) {
+            if ($product->image_path) {
+                Storage::disk('s3')->delete($product->image_path);
+            }
+            $validated['image_path'] = $request->file('image')->store('products', 's3');
+        }
+        unset($validated['image']);
 
         $product->update($validated);
         return redirect()->route('products.show', $product)->with('success', '商品を更新しました');
@@ -60,6 +76,9 @@ class ProductController extends Controller
 
     public function destroy(Product $product)
     {
+        if ($product->image_path) {
+            Storage::disk('s3')->delete($product->image_path);
+        }
         $product->delete();
         return redirect()->route('products.index')->with('success', '商品を削除しました');
     }

@@ -6,8 +6,16 @@
     <h1>商品登録</h1>
 
     <div class="card">
-        <form action="{{ route('products.store') }}" method="POST">
+        <form action="{{ route('products.store') }}" method="POST" enctype="multipart/form-data">
             @csrf
+
+            <div class="form-group">
+                <label for="image">商品画像</label>
+                <input type="file" id="image" name="image" accept="image/*">
+                @error('image')
+                    <div class="error">{{ $message }}</div>
+                @enderror
+            </div>
 
             <div class="form-group">
                 <label for="name">商品名 <span style="color:#dc2626;">*</span></label>

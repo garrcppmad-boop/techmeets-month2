@@ -6,9 +6,22 @@
     <h1>商品編集</h1>
 
     <div class="card">
-        <form action="{{ route('products.update', $product) }}" method="POST">
+        <form action="{{ route('products.update', $product) }}" method="POST" enctype="multipart/form-data">
             @csrf
             @method('PUT')
+
+            <div class="form-group">
+                <label for="image">商品画像</label>
+                @if ($product->image_path)
+                    <div style="margin-bottom:8px;">
+                        <img src="{{ Storage::disk('s3')->url($product->image_path) }}" alt="{{ $product->name }}" style="max-width:200px; border-radius:6px;">
+                    </div>
+                @endif
+                <input type="file" id="image" name="image" accept="image/*">
+                @error('image')
+                    <div class="error">{{ $message }}</div>
+                @enderror
+            </div>
 
             <div class="form-group">
                 <label for="name">商品名 <span style="color:#dc2626;">*</span></label>

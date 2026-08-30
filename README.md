@@ -84,3 +84,70 @@ docker-compose exec app php artisan migrate
 | `http://localhost/register` | ユーザー登録 |
 | `http://localhost/login` | ログイン |
 | `http://localhost:8080` | phpMyAdmin |
+
+## AWSデプロイ手順
+
+### 1. EC2インスタンスの作成
+- AMI: Ubuntu Server（要件は22.04 LTS）
+- インスタンスタイプ: t2.micro
+- キーペアを作成し、`.pem`ファイルを安全な場所（`~/.ssh`など）に保管
+
+### 2. セキュリティグループの設定
+下記「セキュリティグループの設計理由」を参照。SSHは自分のIPのみ、HTTPは全許可で作成する。
+
+### 3. SSH接続
+```bash
+ssh -i "キーファイルのパス.pem" ubuntu@<EC2のパブリックIP>
+```
+
+### 4. Dockerのインストール
+```bash
+sudo apt-get update
+sudo apt-get install -y ca-certificates curl gnupg
+sudo install -m 0755 -d /etc/apt/keyrings
+curl -fsSL https://download.docker.com/linux/ubuntu/gpg | sudo gpg --dearmor -o /etc/apt/keyrings/docker.gpg
+sudo chmod a+r /etc/apt/keyrings/docker.gpg
+echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/ubuntu $(. /etc/os-release && echo $VERSION_CODENAME) stable" | sudo tee /etc/apt/sources.list.d/docker.list > /dev/null
+sudo apt-get update
+sudo apt-get install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
+sudo usermod -aG docker ubuntu
+```
+
+### 5. アプリのクローンと起動
+```bash
+git clone https://github.com/garrcppmad-boop/techmeets-month2.git app
+cd app
+docker compose up -d
+docker compose exec app composer install
+docker compose exec app php artisan key:generate
+docker compose exec app php artisan migrate
+```
+
+### 6. RDS（MySQL）への接続設定
+EC2上のMySQLコンテナの代わりにRDSを使う場合は、`.env`の`DB_*`をRDSのエンドポイントに向けてマイグレーションを実行する。
+```
+DB_CONNECTION=mysql
+DB_HOST=<RDSエンドポイント>.rds.amazonaws.com
+DB_PORT=3306
+DB_DATABASE=laravel
+DB_USERNAME=<RDSユーザー名>
+DB_PASSWORD=<RDSパスワード>
+```
+```bash
+docker compose exec app php artisan migrate
+```
+
+### 7. 動作確認
+ブラウザで `http://<EC2のパブリックIP>` にアクセスし、アプリが表示されることを確認する。
+
+## セキュリティグループの設計理由
+
+「とりあえず開けた」ルールは無く、それぞれ用途に基づいて許可範囲を最小化している。
+
+| ポート | プロトコル | 許可元 | 理由 |
+|---|---|---|---|
+| 22 (SSH) | TCP | `<自分のグローバルIP>/32` | サーバーの管理（ログイン・デプロイ作業）を行うのは自分の端末のみのため、許可元を自分のグローバルIP1つに限定した。`0.0.0.0/0`にすると世界中からSSHの総当たり攻撃・鍵の推測攻撃を受け続けることになり、攻撃対象領域（アタックサーフェス）が不必要に広がるため避けた。 |
+| 80 (HTTP) | TCP | `0.0.0.0/0` | このアプリは不特定多数のユーザーがブラウザからアクセスするWebアプリであり、閲覧者のIPアドレスを事前に特定できない。そのため、公開Webサービスとして機能させるにはHTTPは全世界に開放する必要がある。 |
+| 3306 (MySQL) | TCP | 未開放（インターネットからは許可しない） | データベースはアプリケーション（EC2内のコンテナ、または同一VPC内）からのみ参照できればよく、外部に直接公開する理由がない。ここを開けるとDBへの不正アクセス・データ漏洩リスクに直結するため、意図的に許可ルールを作らなかった。 |
+
+> 補足: SSHの許可元IP（`<自分のグローバルIP>/32`）は自宅・作業環境のグローバルIPが変わるたびに更新が必要。固定できない環境の場合はVPN経由での接続や踏み台サーバーの導入を検討する。

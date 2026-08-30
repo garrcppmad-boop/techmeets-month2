@@ -7,6 +7,11 @@
         <span class="badge">{{ $product->category }}</span>
         <h1 style="margin-top:10px;">{{ $product->name }}</h1>
 
+        @if ($product->image_path)
+            <img src="{{ Storage::disk('s3')->url($product->image_path) }}" alt="{{ $product->name }}"
+                 style="max-width:100%; max-height:320px; border-radius:8px; margin-top:12px;">
+        @endif
+
         <table style="margin-top:20px; box-shadow:none; border:1px solid #e5e7eb;">
             <tr>
                 <th style="background:#f3f4f6; color:#374151; width:140px;">価格</th>
