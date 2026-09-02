@@ -12,7 +12,8 @@ class ItemResource extends JsonResource
             'id'         => $this->id,
             'name'       => $this->name,
             'price'      => $this->price,
-            'created_at' => $this->created_at->toDateString(),
+            'created_at' => $this->created_at->toISOString(),
         ];
     }
 }
+
