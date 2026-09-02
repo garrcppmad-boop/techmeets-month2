@@ -22,6 +22,9 @@
                         <x-nav-link :href="route('tasks.index')" :active="request()->routeIs('tasks*')">
                             タスク管理
                         </x-nav-link>
+                        <x-nav-link :href="route('checkout.index')" :active="request()->routeIs('checkout*')">
+                            商品購入
+                        </x-nav-link>
                     @endauth
                 </div>
             </div>

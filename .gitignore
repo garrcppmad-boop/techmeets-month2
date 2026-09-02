@@ -3,6 +3,15 @@
 .env
 .env.backup
 .env.production
+.env.*.local
+
+# SQLite データベースファイル（実データが入りうるためコミットしない）
+/laravel
+*.sqlite
+*.sqlite3
+
+# 誤って入れ子になった別リポジトリ（サブモジュールではない）
+/techmeets-month2
 .phpactor.json
 .phpunit.result.cache
 /.fleet

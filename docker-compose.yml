@@ -13,55 +13,20 @@ services:
       - app-network
 
   # PHP-FPM（アプリケーション）
+  #
+  # DB 接続情報はここに書かない。Laravel が読み込む .env の DB_* が
+  # そのまま使われる（本番では .env を RDS のエンドポイントに向ける）。
+  # ローカル開発用の DB コンテナと DB_* の上書きは docker-compose.override.yml 側で行う。
   app:
     build:
       context: .
       dockerfile: docker/php/Dockerfile
     volumes:
       - ./:/var/www/html
-    environment:
-      - DB_HOST=db
-      - DB_DATABASE=laravel
-      - DB_USERNAME=root
-      - DB_PASSWORD=secret
-    depends_on:
-      - db
     networks:
       - app-network
-      
-  # MySQL（データベース）
-  db:
-    image: mysql:8.0
-    ports:
-      - "3306:3306"
-    environment:
-      MYSQL_DATABASE: laravel
-      MYSQL_ROOT_PASSWORD: secret
-    volumes:
-      - db-data:/var/lib/mysql   # MySQLのデータを「db-data」というボリュームに永続化
-    networks:
-      - app-network
-
-  # phpMyAdmin（データベース管理ツール）
-  phpmyadmin:
-    image: phpmyadmin:latest
-    ports:
-      - "8080:80"
-    environment:
-      PMA_HOST: db
-      PMA_USER: root
-      PMA_PASSWORD: secret
-    depends_on:
-      - db
-    networks:
-      - app-network
-
-# 永続化ボリューム（コンテナを削除してもDBのデータを残す）
-volumes:
-  db-data:
 
 # 仮想ネットワーク（同じネットワーク内のコンテナはサービス名で通信できる）
 networks:
   app-network:
     driver: bridge
-
