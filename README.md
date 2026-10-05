@@ -201,6 +201,163 @@ docker compose -f docker-compose.yml exec app php artisan migrate --force
 ### 7. 動作確認
 ブラウザで `http://<EC2のパブリックIP>` にアクセスし、アプリが表示されることを確認する。
 
+## 独自ドメイン + HTTPS 化（Let's Encrypt）
+
+`http://<Elastic IP>` で動いている状態を前提に、独自ドメインを割り当てて HTTPS 公開する。
+構成は **ホスト Nginx（80/443・TLS 終端）→ Docker コンテナ内 Nginx（127.0.0.1:8080）→ PHP-FPM**。
+
+### 1. ドメイン取得と A レコード設定
+1. ドメイン取得サービス（お名前.com / Route 53 / Cloudflare Registrar 等、年 1,000〜1,500 円）で独自ドメインを取得
+2. DNS 管理画面で A レコードを設定
+   - `example.com`      → `<Elastic IP>`
+   - `www.example.com`  → `<Elastic IP>`
+3. 反映を確認（下記「練習課題1」の `dig`）。返ってこない場合は数分〜数時間待つ
+
+### 2. セキュリティグループに 443 を追加
+インバウンドに `443 (HTTPS) / TCP / 0.0.0.0/0` を追加する（80 は Week11 で追加済み）。
+80 も開けたままにする（Certbot の HTTP-01 チャレンジが 80 を使う）。
+
+### 3. コンテナ Nginx を内部公開に変更
+`docker-compose.yml` の nginx サービスを次のように変更し、`docker compose -f docker-compose.yml up -d` で反映。
+
+```yaml
+  nginx:
+    ports:
+      - "127.0.0.1:8080:80"   # ← "80:80" から変更。ホスト Nginx からのみ到達可能にする
+```
+
+### 4. ホスト Nginx を設定（リバースプロキシ）
+```bash
+sudo apt update && sudo apt install -y nginx
+sudo mkdir -p /var/www/certbot
+
+# リポジトリの deploy/nginx/laravel-app.conf を配置し、example.com を自分のドメインに全置換
+sudo cp app/deploy/nginx/laravel-app.conf /etc/nginx/sites-available/laravel-app.conf
+sudo sed -i 's/example\.com/取得したドメイン/g' /etc/nginx/sites-available/laravel-app.conf
+sudo ln -s /etc/nginx/sites-available/laravel-app.conf /etc/nginx/sites-enabled/laravel-app.conf
+sudo rm -f /etc/nginx/sites-enabled/default
+
+sudo nginx -t && sudo systemctl reload nginx
+# この時点で http://ドメイン がアプリを表示すれば STEP A 成功
+```
+
+### 5. Certbot で証明書取得
+```bash
+sudo apt install -y certbot
+sudo certbot certonly --webroot -w /var/www/certbot \
+  -d 取得したドメイン -d www.取得したドメイン \
+  --email <自分のメール> --agree-tos --no-eff-email
+```
+
+### 6. HTTPS + リダイレクトを有効化
+`/etc/nginx/sites-available/laravel-app.conf` を編集：
+- STEP A の `location / { proxy_pass ... }` を削除し、`return 301 https://ドメイン$request_uri;` を有効化
+- STEP B の 2 つの `server { listen 443 ssl; ... }` ブロックのコメントを外す
+
+```bash
+sudo nginx -t && sudo systemctl reload nginx
+```
+
+### 7. Laravel 側の設定（プロキシ配下の HTTPS 対応）
+TLS はホスト Nginx で終端し、コンテナには HTTP で渡るため、そのままだと Laravel が
+`http://` の URL を生成して CSS/JS が混在コンテンツになる。`.env`：
+
+```env
+APP_ENV=production
+APP_DEBUG=false
+APP_URL=https://取得したドメイン
+SESSION_SECURE_COOKIE=true
+```
+
+`bootstrap/app.php`（Laravel 12）に信頼プロキシを追加：
+```php
+->withMiddleware(function (Middleware $middleware) {
+    $middleware->trustProxies(at: '*');   // ホスト Nginx からの X-Forwarded-* を信頼
+})
+```
+
+```bash
+docker compose -f docker-compose.yml exec app php artisan config:cache
+docker compose -f docker-compose.yml exec app php artisan route:cache
+```
+
+### 8. 証明書の自動更新
+```bash
+sudo systemctl list-timers | grep certbot     # snap/apt 版とも timer が自動登録される
+sudo certbot renew --dry-run                   # 更新シミュレーション
+```
+更新後に Nginx へ反映するため deploy hook を設定：
+```bash
+echo -e '#!/bin/sh\nsystemctl reload nginx' | sudo tee /etc/letsencrypt/renewal-hooks/deploy/reload-nginx.sh
+sudo chmod +x /etc/letsencrypt/renewal-hooks/deploy/reload-nginx.sh
+```
+
+---
+
+## 練習課題1：コマンドで動作確認する
+
+実際に取得したドメイン `sk-week13.com` に対して実行した結果。
+
+### `dig sk-week13.com +short`
+```
+13.238.87.91
+```
+権威 DNS に問い合わせた最終的な A レコード（IP アドレス）だけを表示する。
+EC2 の Elastic IP（`13.238.87.91`）が返っており、「ドメイン → サーバー」の名前解決が
+正しく設定できていることを意味する。
+
+### `curl -I https://sk-week13.com`
+```
+HTTP/1.1 302 Found
+Server: nginx/1.24.0 (Ubuntu)
+Content-Type: text/html; charset=utf-8
+X-Powered-By: PHP/8.2.34
+Location: https://sk-week13.com/threads
+```
+`-I` は HTTP レスポンスヘッダーのみを取得する。TLS ハンドシェイクが成功した時点で
+証明書が有効に読めている証拠（失敗していれば `curl` 自体がエラーで止まる）。
+`302 Found` は Laravel 側のルーティングによるリダイレクト（`/` → `/threads`）で、
+HTTPS 配信自体は成功している。`Server: nginx` がホスト Nginx、`X-Powered-By: PHP` が
+出ていることからコンテナ内の PHP-FPM まで到達していることが分かる。
+
+### `sudo certbot certificates`
+```
+Certificate Name: sk-week13.com
+  Domains: sk-week13.com www.sk-week13.com
+  Expiry Date: 2027-01-02 21:53:14+00:00 (VALID: 89 days)
+  Certificate Path: /etc/letsencrypt/live/sk-week13.com/fullchain.pem
+```
+インストール済み証明書の一覧と **有効期限（Let's Encrypt は発行から90日）** を表示する。
+`VALID: 89 days` が残日数。自動更新の設定自体は systemd timer 側
+（`systemctl list-timers | grep certbot`）で管理され、期限 30 日前を切ると
+`certbot renew` が自動更新する。
+
+## 練習課題2：www なし・あり を統一する
+
+`www.sk-week13.com` へのアクセスも `https://sk-week13.com`（www なし）へ 301 リダイレクト
+する。`deploy/nginx/laravel-app.conf` の `server_name www.sk-week13.com` のブロックが
+これを担当する：
+
+```nginx
+server {
+    listen 443 ssl;
+    server_name www.sk-week13.com;
+    ssl_certificate     /etc/letsencrypt/live/sk-week13.com/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/sk-week13.com/privkey.pem;
+    return 301 https://sk-week13.com$request_uri;   # www なしへ集約
+}
+```
+証明書は `-d sk-week13.com -d www.sk-week13.com` の2つを1枚に含めているため、www でも
+TLS ハンドシェイクは成功し、その上で301で非wwwに寄せられる。
+
+確認結果：
+```
+$ curl -I https://www.sk-week13.com
+HTTP/1.1 301 Moved Permanently
+Location: https://sk-week13.com/
+```
+想定どおり `301` で非 www のドメインへリダイレクトされている。
+
 ### 8. 使い終わったAWSリソースの停止・削除（課金防止）
 
 検証が終わったら**必ず**リソースを片付ける。放置すると無料枠超過や Elastic IP などで課金が発生する。

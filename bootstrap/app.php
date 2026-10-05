@@ -12,7 +12,9 @@ return Application::configure(basePath: dirname(__DIR__))
         health: '/up',
     )
     ->withMiddleware(function (Middleware $middleware): void {
-        //
+        // 本番はホスト Nginx が TLS を終端し、コンテナへは HTTP + X-Forwarded-* で渡す。
+        // これを信頼しないと Laravel が http:// の URL を生成し混在コンテンツになる。
+        $middleware->trustProxies(at: '*');
     })
     ->withExceptions(function (Exceptions $exceptions): void {
         //
