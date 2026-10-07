@@ -1,8 +1,8 @@
-@extends('layouts.app')
+<x-app-layout>
+    <x-slot name="header">
+        <h2 class="font-semibold text-xl text-gray-800 leading-tight">{{ $product->name }}</h2>
+    </x-slot>
 
-@section('title', $product->name)
-
-@section('content')
     <div class="card">
         <span class="badge">{{ $product->category }}</span>
         <h1 style="margin-top:10px;">{{ $product->name }}</h1>
@@ -47,4 +47,4 @@
         </form>
         <a href="{{ route('products.index') }}" class="btn btn-secondary">一覧に戻る</a>
     </div>
-@endsection
+</x-app-layout>

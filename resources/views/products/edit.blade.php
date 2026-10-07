@@ -1,9 +1,7 @@
-@extends('layouts.app')
-
-@section('title', '商品編集')
-
-@section('content')
-    <h1>商品編集</h1>
+<x-app-layout>
+    <x-slot name="header">
+        <h2 class="font-semibold text-xl text-gray-800 leading-tight">商品編集</h2>
+    </x-slot>
 
     <div class="card">
         <form action="{{ route('products.update', $product) }}" method="POST" enctype="multipart/form-data">
@@ -80,4 +78,4 @@
             </div>
         </form>
     </div>
-@endsection
+</x-app-layout>

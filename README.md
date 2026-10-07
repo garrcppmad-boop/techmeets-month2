@@ -129,6 +129,9 @@ docker compose exec app tail -f storage/logs/laravel.log
 
 ## URL一覧
 
+以下はローカル開発環境（`docker compose up -d`）でのURL。本番（EC2 + 独自ドメイン）のURLは
+[独自ドメイン + HTTPS 化](#独自ドメイン--https-化lets-encrypt)を参照。
+
 | URL | 説明 |
 |---|---|
 | `http://localhost` | トップ（掲示板一覧）|
@@ -201,6 +204,42 @@ docker compose -f docker-compose.yml exec app php artisan migrate --force
 ### 7. 動作確認
 ブラウザで `http://<EC2のパブリックIP>` にアクセスし、アプリが表示されることを確認する。
 
+### 8. 使い終わったAWSリソースの停止・削除（課金防止）
+
+検証が終わったら**必ず**リソースを片付ける。放置すると無料枠超過や Elastic IP などで課金が発生する。
+
+#### 一時的に止めるだけ（あとで再開する場合）
+| リソース | 操作 | 課金の扱い |
+|---|---|---|
+| EC2 | インスタンスを「停止(Stop)」 | インスタンス料金は止まる。ただし **EBS ボリューム**と、割り当て済みで**未使用の Elastic IP** は課金され続ける |
+| RDS | 「一時停止(Stop temporarily)」 | 最大7日間停止可能。ストレージ料金は継続。7日後に自動再開 |
+
+#### 完全に削除する（もう使わない場合）— 推奨順序
+1. **EC2 インスタンスを終了(Terminate)**
+   - EC2 コンソール → インスタンス → 対象を選択 → インスタンスの状態 → 「インスタンスを終了」
+   - 「終了時に削除」が有効な EBS ボリュームは一緒に消える
+2. **EBS ボリュームの残りを確認・削除**
+   - EC2 コンソール → Elastic Block Store → ボリューム → `available`（未アタッチ）状態のものを削除
+3. **Elastic IP の解放(Release)**
+   - EC2 コンソール → Elastic IP → 対象を選択 → アクション → 「Elastic IP アドレスの解放」
+   - ※ 関連付け先の EC2 を終了しただけでは解放されない。未関連付けの Elastic IP は課金対象なので必ず解放する
+4. **RDS インスタンスを削除(Delete)**
+   - RDS コンソール → データベース → 対象 → アクション → 削除
+   - 「最終スナップショットの作成」不要ならチェックを外す（スナップショットも保存料金がかかる）
+   - 「自動バックアップの保持」も不要なら削除
+5. **RDS の手動スナップショットを削除**
+   - RDS コンソール → スナップショット → 残っているものを削除
+6. **その他**
+   - CloudWatch のログ グループ（`/aws/rds/...` など）が残っていれば削除
+   - セキュリティグループ・キーペア・VPC 自体は課金されないが、不要なら整理する
+
+#### 片付け後の確認
+- EC2: 実行中インスタンス 0
+- EC2 → Elastic IP: 一覧が空
+- EC2 → ボリューム: 一覧が空（または不要な `available` が無い）
+- RDS: データベース・スナップショットが空
+- 請求(Billing) → 無料利用枠 / コストエクスプローラーで当日の課金が増えていないこと
+
 ## 独自ドメイン + HTTPS 化（Let's Encrypt）
 
 `http://<Elastic IP>` で動いている状態を前提に、独自ドメインを割り当てて HTTPS 公開する。
@@ -218,12 +257,27 @@ docker compose -f docker-compose.yml exec app php artisan migrate --force
 80 も開けたままにする（Certbot の HTTP-01 チャレンジが 80 を使う）。
 
 ### 3. コンテナ Nginx を内部公開に変更
-`docker-compose.yml` の nginx サービスを次のように変更し、`docker compose -f docker-compose.yml up -d` で反映。
+`docker-compose.yml` の nginx サービスは、環境変数でポート/バインド先を切り替えられるようにしてある
+（ローカル開発用の `docker-compose.override.yml` の phpMyAdmin が `8080` を使っているため、
+直接 `"127.0.0.1:8080:80"` と書き換えるとローカルの `docker compose up -d` がポート競合で
+壊れてしまう。そのため `docker-compose.yml` 自体は共通のままにし、EC2 側だけ `.env` で上書きする）。
 
 ```yaml
+# docker-compose.yml（共通。変更不要）
   nginx:
     ports:
-      - "127.0.0.1:8080:80"   # ← "80:80" から変更。ホスト Nginx からのみ到達可能にする
+      - "${NGINX_BIND_ADDRESS:-0.0.0.0}:${NGINX_PORT:-80}:80"
+```
+
+EC2 の `.env` に以下を追加し、ホスト Nginx からのみ到達可能にする：
+```env
+NGINX_BIND_ADDRESS=127.0.0.1
+NGINX_PORT=8080
+```
+
+反映：
+```bash
+docker compose -f docker-compose.yml up -d
 ```
 
 ### 4. ホスト Nginx を設定（リバースプロキシ）
@@ -282,6 +336,14 @@ docker compose -f docker-compose.yml exec app php artisan route:cache
 ```
 
 ### 8. 証明書の自動更新
+
+> **注意（ハマりポイント）**: ホスト Nginx の 80 番 server ブロックで、HTTP→HTTPS の
+> `return 301` を `location / { }` の中ではなく **server 直下に書くと、
+> `/.well-known/acme-challenge/` へのアクセスまで HTTPS へリダイレクトされてしまい、
+> 90日後の自動更新が失敗する**（nginx は server 直下の `return` を location 振り分けより
+> 前の server-rewrite フェーズで評価するため）。`deploy/nginx/laravel-app.conf` では
+> `return 301` を `location / { }` の中に入れて回避している。
+
 ```bash
 sudo systemctl list-timers | grep certbot     # snap/apt 版とも timer が自動登録される
 sudo certbot renew --dry-run                   # 更新シミュレーション
@@ -291,6 +353,36 @@ sudo certbot renew --dry-run                   # 更新シミュレーション
 echo -e '#!/bin/sh\nsystemctl reload nginx' | sudo tee /etc/letsencrypt/renewal-hooks/deploy/reload-nginx.sh
 sudo chmod +x /etc/letsencrypt/renewal-hooks/deploy/reload-nginx.sh
 ```
+
+#### `sudo certbot renew --dry-run` の実行結果
+```
+$ sudo certbot renew --dry-run
+Saving debug log to /var/log/letsencrypt/letsencrypt.log
+
+- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+Processing /etc/letsencrypt/renewal/sk-week13.com.conf
+- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+Account registered.
+Simulating renewal of an existing certificate for sk-week13.com and www.sk-week13.com
+
+- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+Congratulations, all simulated renewals succeeded:
+  /etc/letsencrypt/live/sk-week13.com/fullchain.pem (success)
+- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+```
+
+| 出力 | 意味 |
+|---|---|
+| `Processing .../renewal/sk-week13.com.conf` | 更新設定ファイルを読み込んでいる |
+| `Account registered.` | `--dry-run` は本番ではなく Let's Encrypt の **ステージング環境** を使うため、そちら用のアカウントが登録される |
+| `Simulating renewal ...` | `sk-week13.com` と `www.sk-week13.com` の更新を本番と同じ手順（HTTP-01 チャレンジ含む）で試行 |
+| `Congratulations, all simulated renewals succeeded` | シミュレーション成功。90日後の自動更新も成功する見込み |
+
+- `--dry-run` なので実際の証明書は更新されない。
+- ランダムな待機時間が入るのは timer からの非対話実行時のみで、ターミナルから手動実行した場合は待機なしですぐ始まる
+  （`--no-random-sleep-on-renew` を付けても結果は同じ）。
+- 失敗時は `Some challenges have failed` や `Timeout during connect` などが表示される。80番ポートが閉じている、
+  または `/.well-known/acme-challenge/` が HTTPS にリダイレクトされている（上記の注意点）のが典型的な原因。
 
 ---
 
@@ -302,9 +394,22 @@ sudo chmod +x /etc/letsencrypt/renewal-hooks/deploy/reload-nginx.sh
 ```
 13.238.87.91
 ```
-権威 DNS に問い合わせた最終的な A レコード（IP アドレス）だけを表示する。
+A レコード（IP アドレス）だけを表示する。問い合わせ先は権威 DNS ではなく、
+手元の端末（または `/etc/resolv.conf`）に設定された**キャッシュDNS（リゾルバ）**で、
+そのリゾルバが必要に応じて権威DNSに再帰的に問い合わせた結果を返している。
 EC2 の Elastic IP（`13.238.87.91`）が返っており、「ドメイン → サーバー」の名前解決が
 正しく設定できていることを意味する。
+
+### `curl -I http://sk-week13.com`（HTTP→HTTPS 自動リダイレクトの確認）
+```
+HTTP/1.1 301 Moved Permanently
+Server: nginx/1.24.0 (Ubuntu)
+Content-Type: text/html
+Location: https://sk-week13.com/
+```
+`301 Moved Permanently` で HTTPS 側へリダイレクトされている。これがHTTP→HTTPSの
+自動リダイレクト要件を満たしている証拠。`/.well-known/acme-challenge/` 配下だけは
+このリダイレクトの対象外（上記「8. 証明書の自動更新」の注意点を参照）。
 
 ### `curl -I https://sk-week13.com`
 ```
@@ -358,42 +463,6 @@ Location: https://sk-week13.com/
 ```
 想定どおり `301` で非 www のドメインへリダイレクトされている。
 
-### 8. 使い終わったAWSリソースの停止・削除（課金防止）
-
-検証が終わったら**必ず**リソースを片付ける。放置すると無料枠超過や Elastic IP などで課金が発生する。
-
-#### 一時的に止めるだけ（あとで再開する場合）
-| リソース | 操作 | 課金の扱い |
-|---|---|---|
-| EC2 | インスタンスを「停止(Stop)」 | インスタンス料金は止まる。ただし **EBS ボリューム**と、割り当て済みで**未使用の Elastic IP** は課金され続ける |
-| RDS | 「一時停止(Stop temporarily)」 | 最大7日間停止可能。ストレージ料金は継続。7日後に自動再開 |
-
-#### 完全に削除する（もう使わない場合）— 推奨順序
-1. **EC2 インスタンスを終了(Terminate)**
-   - EC2 コンソール → インスタンス → 対象を選択 → インスタンスの状態 → 「インスタンスを終了」
-   - 「終了時に削除」が有効な EBS ボリュームは一緒に消える
-2. **EBS ボリュームの残りを確認・削除**
-   - EC2 コンソール → Elastic Block Store → ボリューム → `available`（未アタッチ）状態のものを削除
-3. **Elastic IP の解放(Release)**
-   - EC2 コンソール → Elastic IP → 対象を選択 → アクション → 「Elastic IP アドレスの解放」
-   - ※ 関連付け先の EC2 を終了しただけでは解放されない。未関連付けの Elastic IP は課金対象なので必ず解放する
-4. **RDS インスタンスを削除(Delete)**
-   - RDS コンソール → データベース → 対象 → アクション → 削除
-   - 「最終スナップショットの作成」不要ならチェックを外す（スナップショットも保存料金がかかる）
-   - 「自動バックアップの保持」も不要なら削除
-5. **RDS の手動スナップショットを削除**
-   - RDS コンソール → スナップショット → 残っているものを削除
-6. **その他**
-   - CloudWatch のログ グループ（`/aws/rds/...` など）が残っていれば削除
-   - セキュリティグループ・キーペア・VPC 自体は課金されないが、不要なら整理する
-
-#### 片付け後の確認
-- EC2: 実行中インスタンス 0
-- EC2 → Elastic IP: 一覧が空
-- EC2 → ボリューム: 一覧が空（または不要な `available` が無い）
-- RDS: データベース・スナップショットが空
-- 請求(Billing) → 無料利用枠 / コストエクスプローラーで当日の課金が増えていないこと
-
 ## セキュリティグループの設計理由
 
 「とりあえず開けた」ルールは無く、それぞれ用途に基づいて許可範囲を最小化している。
@@ -405,3 +474,178 @@ Location: https://sk-week13.com/
 | 3306 (MySQL) | TCP | 未開放（インターネットからは許可しない） | データベースはアプリケーション（EC2内のコンテナ、または同一VPC内）からのみ参照できればよく、外部に直接公開する理由がない。ここを開けるとDBへの不正アクセス・データ漏洩リスクに直結するため、意図的に許可ルールを作らなかった。 |
 
 > 補足: SSHの許可元IP（`<自分のグローバルIP>/32`）は自宅・作業環境のグローバルIPが変わるたびに更新が必要。固定できない環境の場合はVPN経由での接続や踏み台サーバーの導入を検討する。
+
+---
+
+# Week14：テストコード作成
+
+## テストの実行方法
+
+テストは SQLite のインメモリDB（`phpunit.xml` で `DB_CONNECTION=sqlite` / `DB_DATABASE=:memory:` を
+`force="true"` 指定）で実行するため、開発用の MySQL のデータには影響しない。
+
+```bash
+# 全テスト実行
+docker compose exec app php artisan test
+
+# Unit / Feature を個別に実行
+docker compose exec app php artisan test --testsuite=Unit
+docker compose exec app php artisan test --testsuite=Feature
+
+# 特定のテストクラスだけ実行
+docker compose exec app php artisan test --filter=PriceCalculatorTest
+
+# カバレッジ計測（PCOV を使用）
+docker compose exec app php artisan test --coverage
+docker compose exec app php artisan test --coverage --min=70   # 70%未満なら失敗させる
+
+# HTML レポートを出力（coverage/ は .gitignore 済み）
+docker compose exec app php artisan test --coverage-html coverage
+```
+
+カバレッジ計測用に `docker/php/Dockerfile` へ PCOV を追加している（追加後は `docker compose build app` で再ビルド）。
+```dockerfile
+RUN pecl install pcov && docker-php-ext-enable pcov
+```
+
+## 実行結果
+
+```
+Tests:    160 passed (297 assertions)
+Total:    84.0 %
+```
+
+- 全 **160 テスト**が成功
+- コードカバレッジ **84.0%**（目標の70%以上を達成）
+- `app/Services/` 配下（`PriceCalculator` / `PostService` / `TaskService`）、Policy、Repository、
+  `PostController` / `ThreadController` / `ReplyController` は **100%**
+
+## テストの構成
+
+| ディレクトリ | 対象 | 主な内容 |
+|---|---|---|
+| `tests/Unit/Services/` | Service層 | `PriceCalculator`（12件）、`PostService`、`TaskService` |
+| `tests/Unit/Models/` | モデル | リレーション、`isOwnedBy()` などのメソッド |
+| `tests/Unit/Policies/` | 認可ポリシー | `PostPolicy` / `TaskPolicy`（所有者のみ更新・削除可） |
+| `tests/Unit/Repositories/` | Repository | 検索・取得・並び順 |
+| `tests/Unit/Resources/` | APIリソース | JSON に出力される項目 |
+| `tests/Feature/Auth/` | 認証（Breeze） | 登録、ログイン/ログアウト、パスワードリセット等 |
+| `tests/Feature/*ControllerTest.php` | CRUD | Post / Product / Thread / Reply / Task |
+| `tests/Feature/Api/` | API | 投稿 API |
+| `tests/Feature/CheckoutTest.php` ほか | 決済 | Checkout、Stripe Webhook |
+
+テスト用データは `database/factories/` の各 Factory（`PostFactory` / `ProductFactory` / `ThreadFactory` /
+`ReplyFactory` / `TaskFactory` / `PurchaseFactory`）で生成している。そのため各モデルに `HasFactory` を追加した。
+
+## 練習課題1：ユニットテスト（Service層）
+
+対象: `app/Services/PriceCalculator.php`（`tests/Unit/Services/PriceCalculatorTest.php`）
+
+DB に依存しない純粋なロジックなので、`PHPUnit\Framework\TestCase` を継承し Laravel を起動せずに高速に実行できる。
+
+### テストケース設計（同値分割・境界値分析）
+
+**`calculateTotal(int $price, int $quantity, float $taxRate = 0.1)`**
+
+| 分類 | 入力 | 期待結果 |
+|---|---|---|
+| 正常系 | 税率デフォルト（10%） | 小計 + 10% |
+| 正常系 | 税率を指定 | 指定した税率で計算 |
+| 境界値 | 税率 0 | 小計のまま |
+| 境界値 | 数量 0 | 0 |
+| 境界値 | 税額に小数が出る | 切り捨てて整数を返す |
+| 異常系 | 価格がマイナス | `InvalidArgumentException` |
+| 異常系 | 数量がマイナス | `InvalidArgumentException` |
+
+**`applyDiscount(int $price, int $discountPercent)`**
+
+有効な同値クラスは `0〜100`、無効なクラスは `0未満` と `100超`。境界の 0 / 100 とその外側をテストしている。
+
+| 分類 | 割引率 | 期待結果 |
+|---|---|---|
+| 正常系 | 通常の割引率 | 割引後の価格 |
+| 境界値（下限） | 0 | 元の価格のまま |
+| 境界値（上限） | 100 | 0 |
+| 異常系（下限の外） | マイナス | `InvalidArgumentException` |
+| 異常系（上限の外） | 100超 | `InvalidArgumentException` |
+
+`PostService` / `TaskService` は Repository 経由で DB に保存するため、`RefreshDatabase` を使って
+作成・更新・削除が DB に反映されることを確認している。
+
+## 練習課題2：Feature Test
+
+### 認証
+| 機能 | テスト内容 |
+|---|---|
+| ユーザー登録 | フォーム送信 → ユーザーが作成されログイン状態になる → ダッシュボードへリダイレクト。登録後にウェルカムメールが送信されること |
+| ログイン | 正しい認証情報でログイン成功 / 誤ったパスワードではログインできない |
+| ログアウト | ログアウト後にゲスト状態になる |
+
+### 投稿の CRUD（`PostControllerTest` ほか）
+| 操作 | テスト内容 |
+|---|---|
+| 表示 | 一覧・詳細は未ログインでも閲覧可能 |
+| 作成 | 未ログインはログイン画面へリダイレクト / ログイン時は DB に保存される |
+| 更新 | 所有者は更新できる |
+| 削除 | 所有者は削除できる（DB から消える） |
+
+Product / Thread / Reply / Task も同じ観点で CRUD をテストしている。
+
+### 認可
+他ユーザーの投稿に対して `edit` / `update` / `destroy` を実行すると **403** になることを確認（削除はレコードが DB に残っていることも確認）。
+
+### バリデーション・エッジケース
+- 必須項目が空 → エラー（Post / Product / Thread / Task）
+- 文字数の上限超過（投稿タイトル、スレッド本文）
+- 不正なカテゴリー・ステータス（選択肢以外の値）
+- 価格がマイナス（Product）
+- Task の期限日: 作成時は**過去日はエラー・当日はOK**（境界値）、更新時は過去日も許可
+- 商品画像のアップロード・差し替え時に古い画像が削除されること（`Storage::fake()`）
+
+## 練習課題3：TDD 実践
+
+> 未実施（今後「いいね数カウント」などを Red → Green → Refactor の手順で追加予定）
+
+## 静的解析・セキュリティスキャン
+
+### ESLint
+ESLint 9（Flat Config）を導入し、`eslint.config.js` に設定。
+```bash
+npx eslint resources/js
+```
+| ルール | 設定 | 理由 |
+|---|---|---|
+| `no-unused-vars` | error | 未使用変数を残さない |
+| `no-console` | warn | `console.log` を本番に残さない |
+| `eqeqeq` | error | `==` ではなく `===` を強制 |
+
+実行結果: `resources/js/app.js`・`bootstrap.js` で `'window' is not defined (no-undef)` が3件検出された。
+ブラウザ用のグローバル変数が未定義扱いになっているためで、`globals` パッケージの
+`globals.browser` を `languageOptions.globals` に設定すれば解消できる（未対応）。
+
+### npm audit / composer audit
+```bash
+npm audit
+docker compose exec app composer audit
+```
+
+| ツール | 結果 |
+|---|---|
+| `composer audit` | 脆弱性なし（No security vulnerability advisories found） |
+| `npm audit` | 9件（critical 2 / high 5 / moderate 2） |
+
+`npm audit` の内訳は、直接依存の `concurrently`（→ `shell-quote`）と `tailwindcss` v3 系の依存
+（`braces` / `chokidar` / `micromatch` / `fast-glob` / `postcss-*`）。いずれも開発時のビルドツールで、
+本番で配信されるコードには含まれない。`concurrently` 等は `npm audit fix` で修正可能、
+`tailwindcss` はメジャーバージョンアップ（v4）が必要なため影響を確認してから対応する。
+
+## Week 14 完了チェックリスト
+
+- [x] テストケース設計（同値分割・境界値分析）ができる
+- [x] 境界値テストを書ける
+- [x] PHPUnit でユニットテストを書ける
+- [x] Feature Test で統合テストを書ける
+- [x] コードカバレッジを測定できる（84.0%）
+- [x] ESLint で静的解析を導入できた
+- [x] npm audit / composer audit でセキュリティスキャンができる
+- [ ] TDD の概念を理解している（練習課題3 未実施）

@@ -10,7 +10,7 @@ class TaskRepository
     public function getAllForUser(int $userId): LengthAwarePaginator
     {
         return Task::where('user_id', $userId)
-            ->orderByRaw("FIELD(status, 'in_progress', 'pending', 'done')")
+            ->orderByRaw("CASE status WHEN 'in_progress' THEN 0 WHEN 'pending' THEN 1 WHEN 'done' THEN 2 ELSE 3 END")
             ->orderBy('due_date')
             ->paginate(15);
     }

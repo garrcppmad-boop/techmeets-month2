@@ -1,8 +1,8 @@
-@extends('layouts.app')
+<x-app-layout>
+    <x-slot name="header">
+        <h2 class="font-semibold text-xl text-gray-800 leading-tight">商品一覧</h2>
+    </x-slot>
 
-@section('title', '商品一覧')
-
-@section('content')
     <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:20px;">
         <h1 style="margin:0;">商品一覧</h1>
         <a href="{{ route('products.create') }}" class="btn btn-primary">+ 商品登録</a>
@@ -57,4 +57,4 @@
     </table>
 
     <div style="margin-top:20px;">{{ $products->links() }}</div>
-@endsection
+</x-app-layout>
