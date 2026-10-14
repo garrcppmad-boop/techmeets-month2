@@ -1,5 +1,7 @@
 <?php
 
+declare(strict_types=1);
+
 namespace App\Services;
 
 use App\Models\Post;
@@ -33,7 +35,7 @@ class PostService
 
     public function deletePost(Post $post): void
     {
-        DB::transaction(function () use ($post) {
+        DB::transaction(function () use ($post): void {
             Log::info('Post deleted', ['post_id' => $post->id]);
             $this->postRepository->delete($post);
         });

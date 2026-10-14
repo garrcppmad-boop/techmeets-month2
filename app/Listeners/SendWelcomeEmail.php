@@ -1,8 +1,11 @@
 <?php
 
+declare(strict_types=1);
+
 namespace App\Listeners;
 
 use App\Mail\WelcomeMail;
+use App\Models\User;
 use Illuminate\Auth\Events\Registered;
 use Illuminate\Support\Facades\Mail;
 
@@ -17,6 +20,9 @@ class SendWelcomeEmail
      */
     public function handle(Registered $event): void
     {
-        Mail::to($event->user->email)->send(new WelcomeMail($event->user));
+        /** @var User $user */
+        $user = $event->user;
+
+        Mail::to($user->email)->send(new WelcomeMail($user));
     }
 }

@@ -20,7 +20,8 @@ RUN apt-get update && apt-get install -y \
 RUN docker-php-ext-install pdo_mysql pdo_pgsql mbstring exif pcntl bcmath gd
 
 # PCOV（テストのコードカバレッジ計測用）
-RUN pecl install pcov && docker-php-ext-enable pcov
+RUN pecl install pcov && docker-php-ext-enable pcov \
+ && echo "pcov.directory=/var/www/html/app" >> /usr/local/etc/php/conf.d/docker-php-ext-pcov.ini
 
 # Composerをインストール
 COPY --from=composer:latest /usr/bin/composer /usr/bin/composer

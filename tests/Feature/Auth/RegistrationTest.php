@@ -1,5 +1,7 @@
 <?php
 
+declare(strict_types=1);
+
 namespace Tests\Feature\Auth;
 
 use App\Mail\WelcomeMail;
@@ -44,9 +46,7 @@ class RegistrationTest extends TestCase
             'password_confirmation' => 'password',
         ]);
 
-        Mail::assertSent(WelcomeMail::class, function (WelcomeMail $mail) {
-            return $mail->hasTo('test@example.com')
-                && $mail->user->name === 'Test User';
-        });
+        Mail::assertSent(WelcomeMail::class, fn(WelcomeMail $mail) => $mail->hasTo('test@example.com')
+                && $mail->user->name === 'Test User');
     }
 }

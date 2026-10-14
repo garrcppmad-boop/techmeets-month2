@@ -1,5 +1,7 @@
 <?php
 
+declare(strict_types=1);
+
 namespace App\Http\Controllers;
 
 use App\Models\Product;
@@ -56,7 +58,7 @@ class CheckoutController extends Controller
                 ]],
                 'payment_intent_data' => ['metadata' => $metadata],
                 'metadata'            => $metadata,
-                'success_url' => route('checkout.success').'?session_id={CHECKOUT_SESSION_ID}',
+                'success_url' => route('checkout.success') . '?session_id={CHECKOUT_SESSION_ID}',
                 'cancel_url'  => route('checkout.cancel'),
             ]);
         } catch (ApiErrorException $e) {

@@ -649,3 +649,120 @@ docker compose exec app composer audit
 - [x] ESLint で静的解析を導入できた
 - [x] npm audit / composer audit でセキュリティスキャンができる
 - [ ] TDD の概念を理解している（練習課題3 未実施）
+
+---
+
+# Week15：GitHub Actions で CI/CD
+
+## パイプラインの全体像
+
+`.github/workflows/pipeline.yml` に、Lint → テスト → デプロイを1本のパイプラインとしてまとめた。
+
+```
+push / pull_request
+   │
+   ▼
+┌────────────┐    ┌───────────────────┐    ┌──────────────────────────────┐
+│ Lint        │ →  │ Test               │ →  │ Deploy                        │
+│ CS Fixer    │    │ PHPUnit + カバレッジ │    │ week9/refactoring   → staging   │
+│ PHPStan     │    │ （70%未満で失敗）     │    │ week6/laravel-setup → production│
+└────────────┘    └───────────────────┘    └──────────────────────────────┘
+```
+
+| ブランチ | push 時の動作 |
+|---|---|
+| `week9/refactoring` | Lint → テスト → **ステージング環境へデプロイ** |
+| `week6/laravel-setup`（デフォルトブランチ＝本番用） | Lint → テスト → **本番環境へデプロイ** |
+| `week6/laravel-setup` への Pull Request | Lint → テストのみ（デプロイしない） |
+
+- 前のジョブが失敗すると次へ進まない（`needs:`）。Lint かテストが落ちたコードはデプロイされない。
+- 課題文の「main ブランチ」は、このリポジトリではデフォルトブランチの `week6/laravel-setup` が該当する。
+- JavaScript のテスト（Vitest）は `.github/workflows/frontend-test.yml` で別に実行している。
+
+## 基本課題・練習課題2：Lint 自動チェック（PHP CS Fixer / PHPStan）
+
+### PHP CS Fixer
+- 設定ファイル: `.php-cs-fixer.php`（ルールは `@auto` / `@auto:risky`）
+- チェック対象を `app/` `config/` `database/` `routes/` `tests/` に限定した
+  （最初は全体が対象で、`storage/framework/views` の Blade キャッシュまで検査していたため）
+- CI では `--dry-run` で実行し、整形されていない箇所があれば失敗する
+
+```bash
+docker compose exec app vendor/bin/php-cs-fixer fix --dry-run --diff   # チェックのみ
+docker compose exec app vendor/bin/php-cs-fixer fix                    # 自動整形
+```
+
+### PHPStan（+ Larastan）
+- Laravel 特有の書き方（Eloquent のリレーションなど）を解析できるよう **Larastan** を追加
+- 設定ファイル: `phpstan.neon`（解析対象 `app/`、レベル 5）
+
+```bash
+docker compose exec app vendor/bin/phpstan analyse --memory-limit=1G
+```
+
+最初の実行で **28件** のエラーが出たので、次のように対応した。
+
+| 指摘 | 対応 |
+|---|---|
+| モデルのリレーションに戻り値の型がない | `BelongsTo` / `HasMany` の戻り値型を追加 |
+| `PostResource` のプロパティが不明 | `@mixin \App\Models\Post` を追加 |
+| Stripe の Webhook オブジェクトの型が不明 | `@var \Stripe\PaymentIntent` を付け、metadata は配列アクセスに変更 |
+| `SendWelcomeEmail` / `VerifyEmailController` / `LoginRequest` の型 | 型注釈・`toString()` を追加 |
+| **`ItemController` が存在しない `App\Models\Item` を使っている** | **未対応（実際のバグ）**。`/api/items` は 500 エラーになる。`phpstan-baseline.neon` に記録して既知の問題として扱い、新しいエラーは CI で検出されるようにした |
+
+修正後も全テスト（160件）が成功することを確認済み。
+
+## 基本課題・練習課題1：自動テストとカバレッジレポート
+
+- PHPUnit を PCOV 付きで実行し、カバレッジを3形式で出力
+  - テキスト → Actions の **Summary** 画面に表示
+  - HTML → **Artifacts（coverage-report）** としてダウンロード可能
+  - Clover XML → カバレッジ率の判定に使用
+- カバレッジが **70% 未満ならジョブを失敗** させる（現在 84.1%）
+
+### ハマりポイント：カバレッジが 0% になった
+`src/`（Vitest 用）フォルダを作った後、カバレッジが 0% になった。PCOV は計測対象のフォルダを
+指定しないと `src/` を優先して自動選択するため、`app/` が計測されていなかった。
+CI（`ini-values: pcov.directory=app`）と Dockerfile（`pcov.directory=/var/www/html/app`）で明示して解決した。
+Dockerfile を変更したので、ローカルでは `docker compose build app` で再ビルドが必要。
+
+### 確認方法
+GitHub → **Actions** → 「CI/CD Pipeline」の実行 → ページ下部の **Summary** にカバレッジが表示される。
+
+## 練習課題3：ステージング・本番への自動デプロイ
+
+GitHub の **Environments** を使い、`staging` と `production` で接続先を分けている。
+デプロイ処理は、サーバーに SSH 接続して以下を実行する（本番構成は `docker-compose.yml` のみ使用）。
+
+```bash
+cd ~/app
+git pull --ff-only origin <ブランチ>
+docker compose -f docker-compose.yml up -d --build
+docker compose -f docker-compose.yml exec -T app composer install --no-dev --optimize-autoloader
+docker compose -f docker-compose.yml exec -T app php artisan migrate --force
+docker compose -f docker-compose.yml exec -T app php artisan config:cache   # route:cache / view:cache も
+```
+
+### GitHub 側の設定（Settings → Environments）
+`staging` と `production` の2つの Environment を作り、それぞれに登録する。
+
+| 種類 | 名前 | 内容 |
+|---|---|---|
+| Secret | `SSH_HOST` | サーバーの IP アドレスまたはドメイン |
+| Secret | `SSH_USERNAME` | `ubuntu` |
+| Secret | `SSH_PRIVATE_KEY` | EC2 の秘密鍵（`.pem` の中身） |
+| Variable | `APP_DIR`（任意） | アプリの場所。未設定なら `~/app` |
+| Variable | `APP_URL`（任意） | Actions 画面に表示するアプリの URL |
+
+- Secrets が未登録の環境では、デプロイを**スキップして警告を表示**する（パイプラインは失敗にしない）。
+- `production` に **Required reviewers** を設定すると、本番デプロイ前に承認を求められる。
+- デプロイ用の SSH 接続を許可するため、EC2 のセキュリティグループで 22 番ポートを GitHub Actions から到達可能にする必要がある
+  （現在は自分の IP のみ許可しているため、そのままでは接続できない）。
+
+## 整理したワークフロー
+
+| ファイル | 状態 |
+|---|---|
+| `pipeline.yml` | Lint・テスト・デプロイをまとめたメインのパイプライン |
+| `frontend-test.yml` | Vitest（自動）と Cypress（手動実行のみ）。Node を 20 → 22 に変更 |
+| `ci.yml` / `test.yml` / `lint.yml` / `debloy.yml` | 内容が `pipeline.yml` と重複していたため削除 |

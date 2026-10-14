@@ -1,5 +1,7 @@
 <?php
 
+declare(strict_types=1);
+
 namespace App\Http\Controllers;
 
 use App\Models\Purchase;
@@ -28,6 +30,7 @@ class StripeWebhookController extends Controller
 
         // イベントの種類に応じて処理を分岐
         if ($event->type === 'payment_intent.succeeded') {
+            /** @var \Stripe\PaymentIntent $paymentIntent */
             $paymentIntent = $event->data->object;
 
             // 決済完了イベントを受信 → 決済ID（PaymentIntent ID）をログに記録
@@ -55,12 +58,12 @@ class StripeWebhookController extends Controller
         $purchase = Purchase::updateOrCreate(
             ['stripe_payment_intent_id' => $paymentIntent->id],
             [
-                'user_id'        => $metadata?->user_id,
-                'product_id'     => $metadata?->product_id,
+                'user_id'        => $metadata['user_id'] ?? null,
+                'product_id'     => $metadata['product_id'] ?? null,
                 'amount'         => $paymentIntent->amount_received ?: $paymentIntent->amount,
                 'currency'       => $paymentIntent->currency ?? 'jpy',
                 'status'         => $paymentIntent->status,
-                'customer_email' => $paymentIntent->receipt_email ?? $metadata?->email,
+                'customer_email' => $paymentIntent->receipt_email ?? $metadata['email'] ?? null,
             ],
         );
 

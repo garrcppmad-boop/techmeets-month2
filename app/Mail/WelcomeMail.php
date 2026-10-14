@@ -1,5 +1,7 @@
 <?php
 
+declare(strict_types=1);
+
 namespace App\Mail;
 
 use App\Models\User;
@@ -11,14 +13,13 @@ use Illuminate\Queue\SerializesModels;
 
 class WelcomeMail extends Mailable
 {
-    use Queueable, SerializesModels;
+    use Queueable;
+    use SerializesModels;
 
     /**
      * 登録が完了したユーザーを受け取る。
      */
-    public function __construct(public User $user)
-    {
-    }
+    public function __construct(public User $user) {}
 
     /**
      * 件名などの封筒情報。
@@ -26,7 +27,7 @@ class WelcomeMail extends Mailable
     public function envelope(): Envelope
     {
         return new Envelope(
-            subject: '【'.config('app.name').'】ご登録ありがとうございます',
+            subject: '【' . config('app.name') . '】ご登録ありがとうございます',
         );
     }
 

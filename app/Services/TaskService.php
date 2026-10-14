@@ -1,5 +1,7 @@
 <?php
 
+declare(strict_types=1);
+
 namespace App\Services;
 
 use App\Models\Task;
@@ -33,7 +35,7 @@ class TaskService
 
     public function deleteTask(Task $task): void
     {
-        DB::transaction(function () use ($task) {
+        DB::transaction(function () use ($task): void {
             Log::info('Task deleted', ['task_id' => $task->id]);
             $this->taskRepository->delete($task);
         });

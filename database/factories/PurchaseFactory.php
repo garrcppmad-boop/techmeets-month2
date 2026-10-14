@@ -1,5 +1,7 @@
 <?php
 
+declare(strict_types=1);
+
 namespace Database\Factories;
 
 use App\Models\Product;
@@ -19,7 +21,7 @@ class PurchaseFactory extends Factory
         return [
             'user_id' => User::factory(),
             'product_id' => Product::factory(),
-            'stripe_payment_intent_id' => 'pi_'.fake()->unique()->bothify('##########????????'),
+            'stripe_payment_intent_id' => 'pi_' . fake()->unique()->bothify('##########????????'),
             'amount' => fake()->numberBetween(100, 50000),
             'currency' => 'jpy',
             'status' => 'succeeded',

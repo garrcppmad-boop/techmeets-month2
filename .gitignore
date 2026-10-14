@@ -32,3 +32,6 @@ Homestead.json
 Homestead.yaml
 Thumbs.db
 /coverage
+
+# PHP CS Fixer configuration
+/.php-cs-fixer.cache

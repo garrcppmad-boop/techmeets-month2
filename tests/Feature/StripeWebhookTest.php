@@ -1,5 +1,7 @@
 <?php
 
+declare(strict_types=1);
+
 namespace Tests\Feature;
 
 use App\Models\Purchase;
@@ -87,10 +89,8 @@ class StripeWebhookTest extends TestCase
         )->assertOk();
 
         Log::shouldHaveReceived('info')
-            ->withArgs(function (string $message, array $context) {
-                return $message === 'Stripe Webhook 受信: payment_intent.succeeded'
-                    && $context['payment_intent_id'] === 'pi_test_123';
-            })
+            ->withArgs(fn(string $message, array $context) => $message === 'Stripe Webhook 受信: payment_intent.succeeded'
+                    && $context['payment_intent_id'] === 'pi_test_123')
             ->once();
     }
 

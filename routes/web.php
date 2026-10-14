@@ -1,5 +1,7 @@
 <?php
 
+declare(strict_types=1);
+
 use App\Http\Controllers\ProfileController;
 use App\Http\Controllers\PostController;
 use App\Http\Controllers\ProductController;
@@ -9,11 +11,9 @@ use App\Http\Controllers\ThreadController;
 use App\Http\Controllers\ReplyController;
 use Illuminate\Support\Facades\Route;
 
-Route::get('/', fn () => redirect()->route('threads.index'));
+Route::get('/', fn() => redirect()->route('threads.index'));
 
-Route::get('/dashboard', function () {
-    return view('dashboard');
-})->middleware(['auth', 'verified'])->name('dashboard');
+Route::get('/dashboard', fn() => view('dashboard'))->middleware(['auth', 'verified'])->name('dashboard');
 
 // ログイン必須
 //
@@ -22,7 +22,7 @@ Route::get('/dashboard', function () {
 // 前に登録しておく必要がある。Laravel のルーターはルート一覧を登録順に先頭からマッチングするため、
 // 逆順だと `GET /posts/create` が先に `posts/{post}`（show）にマッチしてしまい、
 // `{post}` に "create" という文字列が渡って 404 になってしまう（store 等も同様）。
-Route::middleware('auth')->group(function () {
+Route::middleware('auth')->group(function (): void {
     // ブログ
     Route::resource('posts', PostController::class)->except(['index', 'show']);
 
@@ -58,5 +58,4 @@ Route::resource('products', ProductController::class)->only(['index', 'show']);
 // 掲示板（未ログインでも閲覧可）
 Route::resource('threads', ThreadController::class)->only(['index', 'show']);
 
-require __DIR__.'/auth.php';
-
+require __DIR__ . '/auth.php';
