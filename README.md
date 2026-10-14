@@ -764,5 +764,5 @@ docker compose -f docker-compose.yml exec -T app php artisan config:cache   # ro
 | ファイル | 状態 |
 |---|---|
 | `pipeline.yml` | Lint・テスト・デプロイをまとめたメインのパイプライン |
-| `frontend-test.yml` | Vitest（自動）と Cypress（手動実行のみ）。Node を 20 → 22 に変更 |
+| `frontend-test.yml` | Vitest（自動）と Cypress（手動実行のみ）。Node を 20 → 22 に変更。Vitest 専用の `vitest.config.js` を追加（`vite.config.js` の laravel-vite-plugin が CI 環境で起動を拒否し失敗していたため） |
 | `ci.yml` / `test.yml` / `lint.yml` / `debloy.yml` | 内容が `pipeline.yml` と重複していたため削除 |
