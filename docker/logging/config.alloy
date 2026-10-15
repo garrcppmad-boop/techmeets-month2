@@ -1,0 +1,88 @@
+// Grafana Alloy の設定
+// このプロジェクトの全コンテナのログを収集し、ラベルを付けて Loki に送る
+
+// 1. このプロジェクト（docker compose）のコンテナを見つける
+discovery.docker "containers" {
+  host = "unix:///var/run/docker.sock"
+
+  filter {
+    name   = "label"
+    values = ["com.docker.compose.project=laravel-docker-app"]
+  }
+}
+
+// 2. 検索しやすいようにラベルを付ける
+//    service   : docker compose のサービス名（nginx / app / db ...）
+//    container : コンテナ名
+discovery.relabel "containers" {
+  targets = []
+
+  rule {
+    source_labels = ["__meta_docker_container_label_com_docker_compose_service"]
+    target_label  = "service"
+  }
+
+  rule {
+    source_labels = ["__meta_docker_container_name"]
+    regex         = "/(.*)"
+    target_label  = "container"
+  }
+
+  rule {
+    source_labels = ["__meta_docker_container_log_stream"]
+    target_label  = "stream"
+  }
+}
+
+// 3. コンテナのログ（stdout / stderr）を読み取る
+loki.source.docker "containers" {
+  host          = "unix:///var/run/docker.sock"
+  targets       = discovery.docker.containers.targets
+  relabel_rules = discovery.relabel.containers.rules
+  forward_to    = [loki.process.parse.receiver]
+}
+
+// 4. ログの中身を解析してラベルを追加
+loki.process "parse" {
+  // Laravel（JSON 形式）: ログレベル（INFO / ERROR ...）を level ラベルにする
+  stage.match {
+    selector = "{service=\"app\"} |~ \"^\\\\{\""
+
+    stage.json {
+      expressions = {
+        level   = "level_name",
+        channel = "channel",
+      }
+    }
+
+    stage.labels {
+      values = {
+        level = "",
+      }
+    }
+  }
+
+  // Nginx のアクセスログ: HTTP ステータスコードを status ラベルにする
+  stage.match {
+    selector = "{service=\"nginx\", stream=\"stdout\"}"
+
+    stage.regex {
+      expression = "\"\\S+ \\S+ \\S+\" (?P<status>\\d{3}) "
+    }
+
+    stage.labels {
+      values = {
+        status = "",
+      }
+    }
+  }
+
+  forward_to = [loki.write.local.receiver]
+}
+
+// 5. Loki に送信
+loki.write "local" {
+  endpoint {
+    url = "http://loki:3100/loki/api/v1/push"
+  }
+}

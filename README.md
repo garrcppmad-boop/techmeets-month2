@@ -766,3 +766,165 @@ docker compose -f docker-compose.yml exec -T app php artisan config:cache   # ro
 | `pipeline.yml` | Lint・テスト・デプロイをまとめたメインのパイプライン |
 | `frontend-test.yml` | Vitest（自動）と Cypress（手動実行のみ）。Node を 20 → 22 に変更。Vitest 専用の `vitest.config.js` を追加（`vite.config.js` の laravel-vite-plugin が CI 環境で起動を拒否し失敗していたため） |
 | `ci.yml` / `test.yml` / `lint.yml` / `debloy.yml` | 内容が `pipeline.yml` と重複していたため削除 |
+
+---
+
+# Week16：最適化された Dockerfile
+
+プロジェクト直下の `Dockerfile` が本番用の最適化イメージ。
+ローカル開発用は従来どおり `docker/php/Dockerfile`（`docker-compose.yml` から使用）。
+
+```bash
+docker build -t laravel-app:prod .
+docker images laravel-app:prod
+```
+
+## 要件と対応
+
+| 要件 | 対応内容 |
+|---|---|
+| マルチステージビルド | `vendor`（Composer）→ `assets`（Vite で CSS/JS をビルド）→ `runtime`（実行用）の3段階。Composer・Node.js・ビルド用のファイルは最終イメージに含まれない |
+| Alpine Linux ベース | `php:8.2-fpm-alpine` / `php:8.2-cli-alpine` / `node:22-alpine` |
+| イメージサイズ 300MB 以下 | **194MB**（最初の試作は 344MB。練習課題2の脆弱性修正で 184MB → 194MB） |
+| 非rootユーザーで実行 | `USER www-data`。ファイルの所有者も `www-data` |
+| ヘルスチェック | `HEALTHCHECK` で 30 秒ごとに PHP-FPM の `/ping` に問い合わせ、`pong` が返れば正常 |
+| `.dockerignore` | 「全部除外 → 必要なものだけ許可」する allowlist 方式で作成 |
+
+その他の最適化:
+- PHP 拡張は本番で使う `pdo_mysql` と `opcache` だけにした（開発用にあった gd・pdo_pgsql 等は不使用のため外した）
+- `php.ini-production` と OPcache を有効化
+- `composer.json` / `package.json` を先にコピーして依存をインストールし、ソースだけ変更したときはビルドキャッシュが効くようにした
+
+## イメージサイズを 344MB → 184MB にした方法
+
+`docker history` と `du` で中身を調べ、大きかった2つを削った。
+
+| 原因 | サイズ | 対応 |
+|---|---|---|
+| プロジェクト内の別フォルダ（`my-frontend/` の node_modules、`techmeets-month2/` など）がコピーされていた | 約 73MB | `.dockerignore` を allowlist 方式に変更 |
+| AWS SDK に 400 以上の AWS サービスの定義が入っていた（使うのは S3 だけ） | 約 58MB | AWS SDK 公式の `removeUnusedServices` を `composer.json` に設定し、S3（と認証用の Sts / SSO / SSOOIDC）以外を削除 |
+
+## 気付いた問題：別フォルダの `.env` がイメージに入っていた
+最初の `.dockerignore` は「除外したいものを列挙する」方式で、直下の `.env` しか除外していなかった。
+そのため `techmeets-month2/.env` がイメージに入ってしまっていた（push 前に気付き、イメージは削除済み）。
+allowlist 方式にしたことで、許可したフォルダ以外は入らず、`**/.env` も全階層で除外される。
+
+## 動作確認
+
+| 確認内容 | 結果 |
+|---|---|
+| イメージサイズ | 194MB |
+| 実行ユーザー（`ps`） | php-fpm のプロセスはすべて `www-data` |
+| ヘルスチェック（`docker inspect`） | 起動後 `healthy` |
+| イメージ内の `.env` | なし |
+| PHP-FPM 経由で `/login` を表示 | ログイン画面の HTML が返る |
+| 既存のテスト | 160 件すべて成功 |
+
+## 練習課題1：イメージサイズ削減（before / after）
+
+既存の開発用イメージ（`docker/php/Dockerfile`）と、最適化した本番用イメージ（直下の `Dockerfile`）を比較した。
+
+```bash
+docker images
+```
+
+| | イメージ | ベースイメージ | ディスク使用量 | 圧縮後（push 時の転送量） |
+|---|---|---|---|---|
+| **before** | `laravel-docker-app-app:latest` | `php:8.2-fpm`（Debian） | **847MB** | 221MB |
+| **after** | `laravel-app:prod` | `php:8.2-fpm-alpine` | **194MB** | 42.4MB |
+| **削減率** | | | **77.1% 削減** | **80.8% 削減** |
+
+> before のイメージにはアプリのコードと `vendor/` が入っていない（開発時はボリュームでマウントしているため）。
+> after はコードと `vendor/` まで含めた上でこのサイズなので、同じ中身で比べれば差はさらに大きい。
+
+### 何が減ったか（`docker history` で比較）
+
+| 項目 | before | after | 対応 |
+|---|---|---|---|
+| ベースイメージ | 698MB（Debian） | 118MB（Alpine） | Alpine Linux に変更（**約580MB 減**） |
+| apt / apk で追加したパッケージ | 99.5MB（git, curl, zip, ping, dig など） | 8.65MB（fcgi と、脆弱性修正のための `apk upgrade`） | 実行に不要な開発・調査用ツールを入れない |
+| PHP 拡張 | pdo_mysql, pdo_pgsql, mbstring, exif, pcntl, bcmath, gd, pcov | pdo_mysql, opcache | 本番で使う拡張だけにした |
+| Composer 本体 | 3.65MB | なし | ビルド用ステージだけで使い、最終イメージには入れない（マルチステージ） |
+| `vendor/` | （マウント） | 56.3MB | `--no-dev` で開発用パッケージを除外、AWS SDK の未使用サービスを削除 |
+
+ベースイメージを Alpine に変えたことが一番効いている。Debian 版の `php:8.2-fpm` は、
+それだけで after のイメージ全体（194MB）の約3.6倍ある。
+
+## 練習課題2：セキュリティ対策（Trivy）
+
+Trivy（`winget install AquaSecurity.Trivy`）でイメージと Dockerfile をスキャンした。
+
+```bash
+trivy image laravel-app:prod                              # 全深刻度
+trivy image --severity HIGH,CRITICAL laravel-app:prod     # 深刻度が高いものだけ
+trivy image --scanners secret laravel-app:prod            # 秘密情報（APIキー等）の混入
+trivy config Dockerfile                                   # Dockerfile の設定ミス
+```
+
+### スキャン結果
+
+| 対象 | CRITICAL | HIGH | MEDIUM | LOW / UNKNOWN | 合計 |
+|---|---|---|---|---|---|
+| 既存イメージ `laravel-docker-app-app`（Debian） | 7 | 150 | 940 | 1,009 | **2,106** |
+| 最適化イメージ（修正前） | 0 | 0 | 2 | 0 | **2** |
+| 最適化イメージ（修正後） | 0 | 0 | 0 | 0 | **0** |
+
+- **Alpine 化とパッケージの削減だけで 2,106件 → 2件**になった。入っているソフトが少ないほど、脆弱性も少ない
+- 残った2件は Alpine の OS パッケージ（`nghttp2-libs` 1.69.0 → 修正版 1.70.0、`zlib` 1.3.2-r0 → 1.3.2-r1）。
+  ベースイメージが作られた後に修正版が出ていたもので、Dockerfile に **`apk upgrade --no-cache`** を追加して解消した
+- 秘密情報スキャン: 検出なし（`.env` などは含まれていない）
+- Dockerfile の設定ミス: 0件（非root ユーザー・HEALTHCHECK を設定済みのため）
+
+### CI での自動スキャン
+`pipeline.yml` に **Security scan** ジョブを追加した。本番用イメージをビルドして Trivy で検査し、
+修正版がある HIGH / CRITICAL の脆弱性、または Dockerfile の重大な設定ミスが見つかったら失敗する。
+デプロイは Lint・テスト・セキュリティスキャンがすべて成功したときだけ実行される。
+
+## 練習課題3：ログ収集（Grafana Loki + Alloy + Grafana）
+
+全コンテナのログを1か所に集め、ブラウザで検索できるようにした。
+
+```
+ nginx / app / db ...  ──stdout/stderr──▶  Alloy（収集） ──▶  Loki（保存・検索） ◀──  Grafana（画面）
+```
+
+| ファイル | 役割 |
+|---|---|
+| `docker-compose.logging.yml` | Loki・Alloy・Grafana を追加し、Laravel のログを JSON で標準エラーにも出力させる |
+| `docker/logging/config.alloy` | Docker のコンテナログを収集し、ラベルを付けて Loki に送る |
+| `docker/logging/loki-config.yml` | Loki の設定（保存期間 7日） |
+| `docker/logging/grafana-datasources.yml` | Grafana に Loki を自動登録 |
+
+### 起動と確認
+
+```bash
+docker compose -f docker-compose.yml -f docker-compose.override.yml -f docker-compose.logging.yml up -d
+```
+
+http://localhost:3000 → 左メニュー **Explore** → データソース **Loki** で検索する。
+
+| 検索したいもの | LogQL（Explore に入力） |
+|---|---|
+| アプリのエラーログ | `{service="app", level="ERROR"}` |
+| Nginx の 404 / 5xx | `{service="nginx", status=~"404\|5.."}` |
+| 特定の文字列を含むログ | `{service="app"} \|= "Stripe"` |
+| ステータスコード別のアクセス数 | `sum by (status) (count_over_time({service="nginx"}[1h]))` |
+
+### 工夫した点
+- **Laravel のログを JSON で標準エラーに出力**（`LOG_STACK=single,stderr`、`LOG_STDERR_FORMATTER=JsonFormatter`）。
+  ファイル（`storage/logs/laravel.log`）にも従来どおり出力される
+- Alloy でログを解析してラベルを付与: `service`（nginx / app / db ...）、`level`（Laravel のログレベル）、`status`（Nginx の HTTP ステータス）
+- ログの保存期間を 7日にし、古いログは自動削除（ディスクを圧迫しない）
+- 通常の `docker compose up -d` には影響しない（ログ基盤は必要なときだけ起動する）
+
+### 動作確認の結果
+- 7つのコンテナ（nginx, app, db, phpmyadmin, loki, alloy, grafana）すべてのログが Loki に届いた
+- `/api/items` にアクセスすると、Laravel の `Class "App\Models\Item" not found` エラーが
+  `level="ERROR"` 付きで検索できた（Week15 で PHPStan が検出した既知のバグ）
+- Nginx のアクセスログをステータスコード別に集計できた（200: 16件, 302: 1件, 404: 1件, 504: 1件）
+- ログ収集あり／なしで応答時間に差がないことを確認（どちらも約 6.6秒。遅いのは Windows のフォルダ共有によるもの）
+
+### 本番（EC2）での運用案
+同じ構成を EC2 で動かすこともできるが、サーバーが落ちるとログも見られなくなる。
+本番では Docker の `awslogs` ログドライバーで **CloudWatch Logs** に送る方法が適している
+（`docker-compose.yml` の各サービスに `logging: driver: awslogs` を設定し、EC2 の IAM ロールに書き込み権限を付与）。
