@@ -8,15 +8,23 @@
     "require": {
         "php": "^8.2",
         "laravel/framework": "^12.0",
-        "laravel/tinker": "^2.10.1"
+        "laravel/tinker": "^2.10.1",
+        "league/flysystem-aws-s3-v3": "^3.0",
+        "predis/predis": "^3.7",
+        "stripe/stripe-php": "^21.3"
     },
     "require-dev": {
+        "barryvdh/laravel-debugbar": "^4.4",
         "fakerphp/faker": "^1.23",
+        "friendsofphp/php-cs-fixer": "^3.95",
+        "larastan/larastan": "^3.13",
+        "laravel/breeze": "^2.4",
         "laravel/pail": "^1.2.2",
         "laravel/pint": "^1.24",
         "laravel/sail": "^1.41",
         "mockery/mockery": "^1.6",
         "nunomaduro/collision": "^8.6",
+        "phpstan/phpstan": "^2.3",
         "phpunit/phpunit": "^11.5.50"
     },
     "autoload": {
@@ -48,6 +56,9 @@
             "@php artisan config:clear --ansi",
             "@php artisan test"
         ],
+        "pre-autoload-dump": [
+            "Aws\\Script\\Composer\\Composer::removeUnusedServices"
+        ],
         "post-autoload-dump": [
             "Illuminate\\Foundation\\ComposerScripts::postAutoloadDump",
             "@php artisan package:discover --ansi"
@@ -70,7 +81,13 @@
     "extra": {
         "laravel": {
             "dont-discover": []
-        }
+        },
+        "aws/aws-sdk-php": [
+            "S3",
+            "Sts",
+            "SSO",
+            "SSOOIDC"
+        ]
     },
     "config": {
         "optimize-autoloader": true,

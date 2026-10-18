@@ -23,9 +23,17 @@
         <env name="BCRYPT_ROUNDS" value="4"/>
         <env name="BROADCAST_CONNECTION" value="null"/>
         <env name="CACHE_STORE" value="array"/>
-        <env name="DB_CONNECTION" value="sqlite"/>
-        <env name="DB_DATABASE" value=":memory:"/>
-        <env name="DB_URL" value=""/>
+        <env name="DB_CONNECTION" value="sqlite" force="true"/>
+        <env name="DB_DATABASE" value=":memory:" force="true"/>
+        <env name="DB_URL" value="" force="true"/>
+        <env name="DB_HOST" value="" force="true"/>
+        <!-- Laravel は $_SERVER の値を優先して読む。Docker の app コンテナには
+             DB_CONNECTION=mysql 等が環境変数で渡されているため、<server> でも上書きしないと
+             テストが開発用の MySQL に接続し、RefreshDatabase でデータが消えてしまう -->
+        <server name="DB_CONNECTION" value="sqlite" force="true"/>
+        <server name="DB_DATABASE" value=":memory:" force="true"/>
+        <server name="DB_URL" value="" force="true"/>
+        <server name="DB_HOST" value="" force="true"/>
         <env name="MAIL_MAILER" value="array"/>
         <env name="QUEUE_CONNECTION" value="sync"/>
         <env name="SESSION_DRIVER" value="array"/>

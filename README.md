@@ -1,59 +1,1106 @@
-<p align="center"><a href="https://laravel.com" target="_blank"><img src="https://raw.githubusercontent.com/laravel/art/master/logo-lockup/5%20SVG/2%20CMYK/1%20Full%20Color/laravel-logolockup-cmyk-red.svg" width="400" alt="Laravel Logo"></a></p>
+# techmeets-month2 / Week8
 
-<p align="center">
-<a href="https://github.com/laravel/framework/actions"><img src="https://github.com/laravel/framework/workflows/tests/badge.svg" alt="Build Status"></a>
-<a href="https://packagist.org/packages/laravel/framework"><img src="https://img.shields.io/packagist/dt/laravel/framework" alt="Total Downloads"></a>
-<a href="https://packagist.org/packages/laravel/framework"><img src="https://img.shields.io/packagist/v/laravel/framework" alt="Latest Stable Version"></a>
-<a href="https://packagist.org/packages/laravel/framework"><img src="https://img.shields.io/packagist/l/laravel/framework" alt="License"></a>
-</p>
+## 概要
 
-## About Laravel
+Laravel + Docker + Laravel Breeze で構築した会員制Webアプリです。
+ユーザー登録・ログイン機能を持ち、ブログ投稿と掲示板（スレッド＋レス）の2つの機能を提供します。
+未ログインでも閲覧できますが、投稿・編集・削除はログインが必要です。
 
-Laravel is a web application framework with expressive, elegant syntax. We believe development must be an enjoyable and creative experience to be truly fulfilling. Laravel takes the pain out of development by easing common tasks used in many web projects, such as:
+## 使用技術
 
-- [Simple, fast routing engine](https://laravel.com/docs/routing).
-- [Powerful dependency injection container](https://laravel.com/docs/container).
-- Multiple back-ends for [session](https://laravel.com/docs/session) and [cache](https://laravel.com/docs/cache) storage.
-- Expressive, intuitive [database ORM](https://laravel.com/docs/eloquent).
-- Database agnostic [schema migrations](https://laravel.com/docs/migrations).
-- [Robust background job processing](https://laravel.com/docs/queues).
-- [Real-time event broadcasting](https://laravel.com/docs/broadcasting).
+- PHP 8.2
+- Laravel 12
+- Laravel Breeze（認証機能）
+- MySQL 8.0
+- Nginx
+- Docker / Docker Compose
+- Tailwind CSS（CDN）
+- Stripe（stripe/stripe-php・Checkout / Webhook）
+- SendGrid（SMTP リレーでメール送信）
 
-Laravel is accessible, powerful, and provides tools required for large, robust applications.
+## セットアップ手順（ローカル開発）
 
-## Learning Laravel
+```bash
+# 1. コンテナを起動（docker-compose.yml と docker-compose.override.yml が自動マージされる）
+docker compose up -d
 
-Laravel has the most extensive and thorough [documentation](https://laravel.com/docs) and video tutorial library of all modern web application frameworks, making it a breeze to get started with the framework. You can also check out [Laravel Learn](https://laravel.com/learn), where you will be guided through building a modern Laravel application.
+# 2. 依存パッケージをインストール
+docker compose exec app composer install
 
-If you don't feel like reading, [Laracasts](https://laracasts.com) can help. Laracasts contains thousands of video tutorials on a range of topics including Laravel, modern PHP, unit testing, and JavaScript. Boost your skills by digging into our comprehensive video library.
+# 3. 環境変数ファイルを作成
+cp .env.example .env
+docker compose exec app php artisan key:generate
 
-## Laravel Sponsors
+# 4. データベースのテーブルを作成
+docker compose exec app php artisan migrate
+```
 
-We would like to extend our thanks to the following sponsors for funding Laravel development. If you are interested in becoming a sponsor, please visit the [Laravel Partners program](https://partners.laravel.com).
+ブラウザで http://localhost にアクセスして確認できます。
 
-### Premium Partners
+### 開発環境と本番環境の構成
 
-- **[Vehikl](https://vehikl.com)**
-- **[Tighten Co.](https://tighten.co)**
-- **[Kirschbaum Development Group](https://kirschbaumdevelopment.com)**
-- **[64 Robots](https://64robots.com)**
-- **[Curotec](https://www.curotec.com/services/technologies/laravel)**
-- **[DevSquad](https://devsquad.com/hire-laravel-developers)**
-- **[Redberry](https://redberry.international/laravel-development)**
-- **[Active Logic](https://activelogic.com)**
+| | 起動コマンド | DB | 起動するコンテナ |
+|---|---|---|---|
+| 開発 | `docker compose up -d` | MySQL コンテナ（`db`） | nginx / app / db / phpmyadmin |
+| 本番 | `docker compose -f docker-compose.yml up -d` | RDS（`.env` の `DB_*`） | nginx / app |
 
-## Contributing
+- `docker-compose.yml` … 本番でも使う最小構成（nginx + app）。app に DB 接続情報は書かず、Laravel が `.env` の `DB_*` を読む。
+- `docker-compose.override.yml` … ローカル開発用。`docker compose` が自動でマージし、`db` / `phpmyadmin` を追加して app の `DB_*` を MySQL コンテナへ向ける。
+- 本番では `-f docker-compose.yml` を明示して override を無効化するため、`.env` の RDS 設定がそのまま有効になる。
 
-Thank you for considering contributing to the Laravel framework! The contribution guide can be found in the [Laravel documentation](https://laravel.com/docs/contributions).
+## 機能一覧
 
-## Code of Conduct
+### 認証（Laravel Breeze）
+- ユーザー登録
+- ログイン / ログアウト
+- パスワードリセット
+- プロフィール編集
 
-In order to ensure that the Laravel community is welcoming to all, please review and abide by the [Code of Conduct](https://laravel.com/docs/contributions#code-of-conduct).
+### 掲示板
+- スレッド一覧表示（ページネーション付き）
+- スレッド詳細・レス一覧表示
+- スレッド作成（ログイン必須）
+- レス投稿（ログイン必須）
+- 自分のスレッド・レスのみ削除可能
 
-## Security Vulnerabilities
+### ブログ
+- 投稿一覧表示（ページネーション付き）
+- 投稿詳細表示
+- 投稿作成（タイトル・内容・カテゴリー、ログイン必須）
+- 投稿編集・削除（自分の投稿のみ）
+- バリデーション実装
 
-If you discover a security vulnerability within Laravel, please send an e-mail to Taylor Otwell via [taylor@laravel.com](mailto:taylor@laravel.com). All security vulnerabilities will be promptly addressed.
+### 商品管理
+- 商品一覧・詳細表示
+- 商品登録・編集・削除（CRUD）
+- バリデーション実装（価格・在庫は0以上の整数）
 
-## License
+### 決済（Stripe Checkout）
+- `/checkout` に購入可能な商品一覧を表示（ログイン必須）
+- 「購入する」→ `CheckoutController@checkout` が `Stripe\Checkout\Session::create()` で
+  Checkout セッションを作成し、Stripe のホスト決済ページへリダイレクト
+- セッションの `payment_intent_data.metadata` に `user_id` / `product_id` を載せ、
+  Webフック側で購入履歴（`purchases` テーブル）に紐付ける
+- 決済完了 Webフック（`POST /api/webhook/stripe`）
+  - `Stripe\Webhook::constructEvent()` で署名検証（`STRIPE_WEBHOOK_SECRET`）
+  - `payment_intent.succeeded` を受信したら決済ID（PaymentIntent ID）をログに記録し、
+    `Purchase::updateOrCreate()` で冪等に購入履歴を保存
 
-The Laravel framework is open-sourced software licensed under the [MIT license](https://opensource.org/licenses/MIT).
+#### ローカルでの決済テスト
+```bash
+# 1. Webフックをローカルへ転送（表示される whsec_... を .env の STRIPE_WEBHOOK_SECRET に設定）
+stripe listen --forward-to localhost/api/webhook/stripe
+docker compose exec app php artisan config:clear
+
+# 2. ブラウザで /checkout → 購入する → テストカード 4242 4242 4242 4242 で決済
+# 3. ログを確認
+docker compose exec app tail -f storage/logs/laravel.log
+```
+
+### メール送信（SendGrid）
+- 会員登録完了（`Registered` イベント）→ `App\Listeners\SendWelcomeEmail` が
+  `App\Mail\WelcomeMail` を送信（ウェルカムメール）
+- 送信経路は **SendGrid の SMTP リレー**。`.env` の設定は次のとおり:
+
+| キー | 値 | 補足 |
+|---|---|---|
+| `MAIL_MAILER` | `smtp` | 実送信しない場合は `log` |
+| `MAIL_HOST` | `smtp.sendgrid.net` | |
+| `MAIL_PORT` | `587` | STARTTLS |
+| `MAIL_USERNAME` | `apikey` | SendGrid の仕様で固定文字列 |
+| `MAIL_PASSWORD` | `${SENDGRID_API_KEY}` | `SENDGRID_API_KEY` を参照 |
+| `SENDGRID_API_KEY` | `SG.xxxx` | SendGrid で発行した APIキー |
+| `MAIL_FROM_ADDRESS` | 認証済み送信元 | SendGrid の Single Sender Verification で認証したアドレス |
+
+- 送信確認は SendGrid 管理画面の **Activity Feed**（`Processed` → `Delivered`）で行う
+
+## セキュリティ対策
+
+| 対策 | 実装方法 |
+|---|---|
+| CSRF対策 | フォームに `@csrf` |
+| XSS対策 | Blade の `{{ }}` による自動エスケープ |
+| 認証ガード | `Route::middleware('auth')` |
+| 認可（所有権チェック） | `isOwnedBy()` メソッドで自分のデータのみ操作可能 |
+| マスアサインメント対策 | モデルの `$fillable` で許可カラムを明示 |
+| バリデーション | `$request->validate()` で入力値を検証 |
+| Webフックの改ざん検証 | `Stripe\Webhook::constructEvent()` で署名を検証し、不正なら 400 |
+| 秘密情報の管理 | APIキー等は `.env`（Git 管理外）。`.env.example` はプレースホルダのみ |
+
+## URL一覧
+
+以下はローカル開発環境（`docker compose up -d`）でのURL。本番（EC2 + 独自ドメイン）のURLは
+[独自ドメイン + HTTPS 化](#独自ドメイン--https-化lets-encrypt)を参照。
+
+| URL | 説明 |
+|---|---|
+| `http://localhost` | トップ（掲示板一覧）|
+| `http://localhost/threads` | 掲示板一覧 |
+| `http://localhost/posts` | ブログ一覧 |
+| `http://localhost/products` | 商品管理一覧 |
+| `http://localhost/checkout` | 商品購入（Stripe Checkout、ログイン必須）|
+| `http://localhost/register` | ユーザー登録 |
+| `http://localhost/login` | ログイン |
+| `http://localhost:8080` | phpMyAdmin |
+
+## AWSデプロイ手順
+
+### 1. EC2インスタンスの作成
+- AMI: Ubuntu Server（要件は22.04 LTS）
+- インスタンスタイプ: t2.micro
+- キーペアを作成し、`.pem`ファイルを安全な場所（`~/.ssh`など）に保管
+
+### 2. セキュリティグループの設定
+下記「セキュリティグループの設計理由」を参照。SSHは自分のIPのみ、HTTPは全許可で作成する。
+
+### 3. SSH接続
+```bash
+ssh -i "キーファイルのパス.pem" ubuntu@<EC2のパブリックIP>
+```
+
+### 4. Dockerのインストール
+```bash
+sudo apt-get update
+sudo apt-get install -y ca-certificates curl gnupg
+sudo install -m 0755 -d /etc/apt/keyrings
+curl -fsSL https://download.docker.com/linux/ubuntu/gpg | sudo gpg --dearmor -o /etc/apt/keyrings/docker.gpg
+sudo chmod a+r /etc/apt/keyrings/docker.gpg
+echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/ubuntu $(. /etc/os-release && echo $VERSION_CODENAME) stable" | sudo tee /etc/apt/sources.list.d/docker.list > /dev/null
+sudo apt-get update
+sudo apt-get install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
+sudo usermod -aG docker ubuntu
+```
+
+### 5. アプリのクローンと起動（本番構成）
+本番では `-f docker-compose.yml` を明示し、開発用の override（DBコンテナ）を読み込ませない。
+```bash
+git clone https://github.com/garrcppmad-boop/techmeets-month2.git app
+cd app
+cp .env.example .env      # 次の手順6で DB_* を RDS に書き換える
+docker compose -f docker-compose.yml up -d
+docker compose -f docker-compose.yml exec app composer install
+docker compose -f docker-compose.yml exec app php artisan key:generate
+```
+
+### 6. RDS（MySQL）への接続設定
+本番構成（手順5）では `db` コンテナは起動せず、app は `.env` の `DB_*` をそのまま使う。
+`.env` を RDS のエンドポイントに向けてからマイグレーションする。
+```
+DB_CONNECTION=mysql
+DB_HOST=<RDSエンドポイント>.rds.amazonaws.com
+DB_PORT=3306
+DB_DATABASE=laravel
+DB_USERNAME=<RDSユーザー名>
+DB_PASSWORD=<RDSパスワード>
+```
+```bash
+docker compose -f docker-compose.yml exec app php artisan config:clear
+docker compose -f docker-compose.yml exec app php artisan migrate --force
+```
+
+> RDS のセキュリティグループは、EC2 のセキュリティグループからの 3306 のみを許可する
+> （`0.0.0.0/0` では開けない）。
+
+### 7. 動作確認
+ブラウザで `http://<EC2のパブリックIP>` にアクセスし、アプリが表示されることを確認する。
+
+### 8. 使い終わったAWSリソースの停止・削除（課金防止）
+
+検証が終わったら**必ず**リソースを片付ける。放置すると無料枠超過や Elastic IP などで課金が発生する。
+
+#### 一時的に止めるだけ（あとで再開する場合）
+| リソース | 操作 | 課金の扱い |
+|---|---|---|
+| EC2 | インスタンスを「停止(Stop)」 | インスタンス料金は止まる。ただし **EBS ボリューム**と、割り当て済みで**未使用の Elastic IP** は課金され続ける |
+| RDS | 「一時停止(Stop temporarily)」 | 最大7日間停止可能。ストレージ料金は継続。7日後に自動再開 |
+
+#### 完全に削除する（もう使わない場合）— 推奨順序
+1. **EC2 インスタンスを終了(Terminate)**
+   - EC2 コンソール → インスタンス → 対象を選択 → インスタンスの状態 → 「インスタンスを終了」
+   - 「終了時に削除」が有効な EBS ボリュームは一緒に消える
+2. **EBS ボリュームの残りを確認・削除**
+   - EC2 コンソール → Elastic Block Store → ボリューム → `available`（未アタッチ）状態のものを削除
+3. **Elastic IP の解放(Release)**
+   - EC2 コンソール → Elastic IP → 対象を選択 → アクション → 「Elastic IP アドレスの解放」
+   - ※ 関連付け先の EC2 を終了しただけでは解放されない。未関連付けの Elastic IP は課金対象なので必ず解放する
+4. **RDS インスタンスを削除(Delete)**
+   - RDS コンソール → データベース → 対象 → アクション → 削除
+   - 「最終スナップショットの作成」不要ならチェックを外す（スナップショットも保存料金がかかる）
+   - 「自動バックアップの保持」も不要なら削除
+5. **RDS の手動スナップショットを削除**
+   - RDS コンソール → スナップショット → 残っているものを削除
+6. **その他**
+   - CloudWatch のログ グループ（`/aws/rds/...` など）が残っていれば削除
+   - セキュリティグループ・キーペア・VPC 自体は課金されないが、不要なら整理する
+
+#### 片付け後の確認
+- EC2: 実行中インスタンス 0
+- EC2 → Elastic IP: 一覧が空
+- EC2 → ボリューム: 一覧が空（または不要な `available` が無い）
+- RDS: データベース・スナップショットが空
+- 請求(Billing) → 無料利用枠 / コストエクスプローラーで当日の課金が増えていないこと
+
+## 独自ドメイン + HTTPS 化（Let's Encrypt）
+
+`http://<Elastic IP>` で動いている状態を前提に、独自ドメインを割り当てて HTTPS 公開する。
+構成は **ホスト Nginx（80/443・TLS 終端）→ Docker コンテナ内 Nginx（127.0.0.1:8080）→ PHP-FPM**。
+
+### 1. ドメイン取得と A レコード設定
+1. ドメイン取得サービス（お名前.com / Route 53 / Cloudflare Registrar 等、年 1,000〜1,500 円）で独自ドメインを取得
+2. DNS 管理画面で A レコードを設定
+   - `example.com`      → `<Elastic IP>`
+   - `www.example.com`  → `<Elastic IP>`
+3. 反映を確認（下記「練習課題1」の `dig`）。返ってこない場合は数分〜数時間待つ
+
+### 2. セキュリティグループに 443 を追加
+インバウンドに `443 (HTTPS) / TCP / 0.0.0.0/0` を追加する（80 は Week11 で追加済み）。
+80 も開けたままにする（Certbot の HTTP-01 チャレンジが 80 を使う）。
+
+### 3. コンテナ Nginx を内部公開に変更
+`docker-compose.yml` の nginx サービスは、環境変数でポート/バインド先を切り替えられるようにしてある
+（ローカル開発用の `docker-compose.override.yml` の phpMyAdmin が `8080` を使っているため、
+直接 `"127.0.0.1:8080:80"` と書き換えるとローカルの `docker compose up -d` がポート競合で
+壊れてしまう。そのため `docker-compose.yml` 自体は共通のままにし、EC2 側だけ `.env` で上書きする）。
+
+```yaml
+# docker-compose.yml（共通。変更不要）
+  nginx:
+    ports:
+      - "${NGINX_BIND_ADDRESS:-0.0.0.0}:${NGINX_PORT:-80}:80"
+```
+
+EC2 の `.env` に以下を追加し、ホスト Nginx からのみ到達可能にする：
+```env
+NGINX_BIND_ADDRESS=127.0.0.1
+NGINX_PORT=8080
+```
+
+反映：
+```bash
+docker compose -f docker-compose.yml up -d
+```
+
+### 4. ホスト Nginx を設定（リバースプロキシ）
+```bash
+sudo apt update && sudo apt install -y nginx
+sudo mkdir -p /var/www/certbot
+
+# リポジトリの deploy/nginx/laravel-app.conf を配置し、example.com を自分のドメインに全置換
+sudo cp app/deploy/nginx/laravel-app.conf /etc/nginx/sites-available/laravel-app.conf
+sudo sed -i 's/example\.com/取得したドメイン/g' /etc/nginx/sites-available/laravel-app.conf
+sudo ln -s /etc/nginx/sites-available/laravel-app.conf /etc/nginx/sites-enabled/laravel-app.conf
+sudo rm -f /etc/nginx/sites-enabled/default
+
+sudo nginx -t && sudo systemctl reload nginx
+# この時点で http://ドメイン がアプリを表示すれば STEP A 成功
+```
+
+### 5. Certbot で証明書取得
+```bash
+sudo apt install -y certbot
+sudo certbot certonly --webroot -w /var/www/certbot \
+  -d 取得したドメイン -d www.取得したドメイン \
+  --email <自分のメール> --agree-tos --no-eff-email
+```
+
+### 6. HTTPS + リダイレクトを有効化
+`/etc/nginx/sites-available/laravel-app.conf` を編集：
+- STEP A の `location / { proxy_pass ... }` を削除し、`return 301 https://ドメイン$request_uri;` を有効化
+- STEP B の 2 つの `server { listen 443 ssl; ... }` ブロックのコメントを外す
+
+```bash
+sudo nginx -t && sudo systemctl reload nginx
+```
+
+### 7. Laravel 側の設定（プロキシ配下の HTTPS 対応）
+TLS はホスト Nginx で終端し、コンテナには HTTP で渡るため、そのままだと Laravel が
+`http://` の URL を生成して CSS/JS が混在コンテンツになる。`.env`：
+
+```env
+APP_ENV=production
+APP_DEBUG=false
+APP_URL=https://取得したドメイン
+SESSION_SECURE_COOKIE=true
+```
+
+`bootstrap/app.php`（Laravel 12）に信頼プロキシを追加：
+```php
+->withMiddleware(function (Middleware $middleware) {
+    $middleware->trustProxies(at: '*');   // ホスト Nginx からの X-Forwarded-* を信頼
+})
+```
+
+```bash
+docker compose -f docker-compose.yml exec app php artisan config:cache
+docker compose -f docker-compose.yml exec app php artisan route:cache
+```
+
+### 8. 証明書の自動更新
+
+> **注意（ハマりポイント）**: ホスト Nginx の 80 番 server ブロックで、HTTP→HTTPS の
+> `return 301` を `location / { }` の中ではなく **server 直下に書くと、
+> `/.well-known/acme-challenge/` へのアクセスまで HTTPS へリダイレクトされてしまい、
+> 90日後の自動更新が失敗する**（nginx は server 直下の `return` を location 振り分けより
+> 前の server-rewrite フェーズで評価するため）。`deploy/nginx/laravel-app.conf` では
+> `return 301` を `location / { }` の中に入れて回避している。
+
+```bash
+sudo systemctl list-timers | grep certbot     # snap/apt 版とも timer が自動登録される
+sudo certbot renew --dry-run                   # 更新シミュレーション
+```
+更新後に Nginx へ反映するため deploy hook を設定：
+```bash
+echo -e '#!/bin/sh\nsystemctl reload nginx' | sudo tee /etc/letsencrypt/renewal-hooks/deploy/reload-nginx.sh
+sudo chmod +x /etc/letsencrypt/renewal-hooks/deploy/reload-nginx.sh
+```
+
+#### `sudo certbot renew --dry-run` の実行結果
+```
+$ sudo certbot renew --dry-run
+Saving debug log to /var/log/letsencrypt/letsencrypt.log
+
+- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+Processing /etc/letsencrypt/renewal/sk-week13.com.conf
+- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+Account registered.
+Simulating renewal of an existing certificate for sk-week13.com and www.sk-week13.com
+
+- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+Congratulations, all simulated renewals succeeded:
+  /etc/letsencrypt/live/sk-week13.com/fullchain.pem (success)
+- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+```
+
+| 出力 | 意味 |
+|---|---|
+| `Processing .../renewal/sk-week13.com.conf` | 更新設定ファイルを読み込んでいる |
+| `Account registered.` | `--dry-run` は本番ではなく Let's Encrypt の **ステージング環境** を使うため、そちら用のアカウントが登録される |
+| `Simulating renewal ...` | `sk-week13.com` と `www.sk-week13.com` の更新を本番と同じ手順（HTTP-01 チャレンジ含む）で試行 |
+| `Congratulations, all simulated renewals succeeded` | シミュレーション成功。90日後の自動更新も成功する見込み |
+
+- `--dry-run` なので実際の証明書は更新されない。
+- ランダムな待機時間が入るのは timer からの非対話実行時のみで、ターミナルから手動実行した場合は待機なしですぐ始まる
+  （`--no-random-sleep-on-renew` を付けても結果は同じ）。
+- 失敗時は `Some challenges have failed` や `Timeout during connect` などが表示される。80番ポートが閉じている、
+  または `/.well-known/acme-challenge/` が HTTPS にリダイレクトされている（上記の注意点）のが典型的な原因。
+
+---
+
+## 練習課題1：コマンドで動作確認する
+
+実際に取得したドメイン `sk-week13.com` に対して実行した結果。
+
+### `dig sk-week13.com +short`
+```
+13.238.87.91
+```
+A レコード（IP アドレス）だけを表示する。問い合わせ先は権威 DNS ではなく、
+手元の端末（または `/etc/resolv.conf`）に設定された**キャッシュDNS（リゾルバ）**で、
+そのリゾルバが必要に応じて権威DNSに再帰的に問い合わせた結果を返している。
+EC2 の Elastic IP（`13.238.87.91`）が返っており、「ドメイン → サーバー」の名前解決が
+正しく設定できていることを意味する。
+
+### `curl -I http://sk-week13.com`（HTTP→HTTPS 自動リダイレクトの確認）
+```
+HTTP/1.1 301 Moved Permanently
+Server: nginx/1.24.0 (Ubuntu)
+Content-Type: text/html
+Location: https://sk-week13.com/
+```
+`301 Moved Permanently` で HTTPS 側へリダイレクトされている。これがHTTP→HTTPSの
+自動リダイレクト要件を満たしている証拠。`/.well-known/acme-challenge/` 配下だけは
+このリダイレクトの対象外（上記「8. 証明書の自動更新」の注意点を参照）。
+
+### `curl -I https://sk-week13.com`
+```
+HTTP/1.1 302 Found
+Server: nginx/1.24.0 (Ubuntu)
+Content-Type: text/html; charset=utf-8
+X-Powered-By: PHP/8.2.34
+Location: https://sk-week13.com/threads
+```
+`-I` は HTTP レスポンスヘッダーのみを取得する。TLS ハンドシェイクが成功した時点で
+証明書が有効に読めている証拠（失敗していれば `curl` 自体がエラーで止まる）。
+`302 Found` は Laravel 側のルーティングによるリダイレクト（`/` → `/threads`）で、
+HTTPS 配信自体は成功している。`Server: nginx` がホスト Nginx、`X-Powered-By: PHP` が
+出ていることからコンテナ内の PHP-FPM まで到達していることが分かる。
+
+### `sudo certbot certificates`
+```
+Certificate Name: sk-week13.com
+  Domains: sk-week13.com www.sk-week13.com
+  Expiry Date: 2027-01-02 21:53:14+00:00 (VALID: 89 days)
+  Certificate Path: /etc/letsencrypt/live/sk-week13.com/fullchain.pem
+```
+インストール済み証明書の一覧と **有効期限（Let's Encrypt は発行から90日）** を表示する。
+`VALID: 89 days` が残日数。自動更新の設定自体は systemd timer 側
+（`systemctl list-timers | grep certbot`）で管理され、期限 30 日前を切ると
+`certbot renew` が自動更新する。
+
+## 練習課題2：www なし・あり を統一する
+
+`www.sk-week13.com` へのアクセスも `https://sk-week13.com`（www なし）へ 301 リダイレクト
+する。`deploy/nginx/laravel-app.conf` の `server_name www.sk-week13.com` のブロックが
+これを担当する：
+
+```nginx
+server {
+    listen 443 ssl;
+    server_name www.sk-week13.com;
+    ssl_certificate     /etc/letsencrypt/live/sk-week13.com/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/sk-week13.com/privkey.pem;
+    return 301 https://sk-week13.com$request_uri;   # www なしへ集約
+}
+```
+証明書は `-d sk-week13.com -d www.sk-week13.com` の2つを1枚に含めているため、www でも
+TLS ハンドシェイクは成功し、その上で301で非wwwに寄せられる。
+
+確認結果：
+```
+$ curl -I https://www.sk-week13.com
+HTTP/1.1 301 Moved Permanently
+Location: https://sk-week13.com/
+```
+想定どおり `301` で非 www のドメインへリダイレクトされている。
+
+## セキュリティグループの設計理由
+
+「とりあえず開けた」ルールは無く、それぞれ用途に基づいて許可範囲を最小化している。
+
+| ポート | プロトコル | 許可元 | 理由 |
+|---|---|---|---|
+| 22 (SSH) | TCP | `<自分のグローバルIP>/32` | サーバーの管理（ログイン・デプロイ作業）を行うのは自分の端末のみのため、許可元を自分のグローバルIP1つに限定した。`0.0.0.0/0`にすると世界中からSSHの総当たり攻撃・鍵の推測攻撃を受け続けることになり、攻撃対象領域（アタックサーフェス）が不必要に広がるため避けた。 |
+| 80 (HTTP) | TCP | `0.0.0.0/0` | このアプリは不特定多数のユーザーがブラウザからアクセスするWebアプリであり、閲覧者のIPアドレスを事前に特定できない。そのため、公開Webサービスとして機能させるにはHTTPは全世界に開放する必要がある。 |
+| 3306 (MySQL) | TCP | 未開放（インターネットからは許可しない） | データベースはアプリケーション（EC2内のコンテナ、または同一VPC内）からのみ参照できればよく、外部に直接公開する理由がない。ここを開けるとDBへの不正アクセス・データ漏洩リスクに直結するため、意図的に許可ルールを作らなかった。 |
+
+> 補足: SSHの許可元IP（`<自分のグローバルIP>/32`）は自宅・作業環境のグローバルIPが変わるたびに更新が必要。固定できない環境の場合はVPN経由での接続や踏み台サーバーの導入を検討する。
+
+---
+
+# Week14：テストコード作成
+
+## テストの実行方法
+
+テストは SQLite のインメモリDB（`phpunit.xml` で `DB_CONNECTION=sqlite` / `DB_DATABASE=:memory:` を
+`<env>` と `<server>` の両方で `force="true"` 指定）で実行するため、開発用の MySQL のデータには影響しない。
+
+> **訂正（Week17 で発覚）**: 当初は `<env>` だけで指定していたが、Laravel は `$_SERVER` の値を優先して読む。
+> Docker の app コンテナには `DB_CONNECTION=mysql` が環境変数で渡されているため、**ローカルのテストは実際には
+> 開発用 MySQL に接続しており、`RefreshDatabase` で毎回データが消えていた**。`<server>` を追加して修正した。
+> （GitHub Actions は環境変数が無いので最初から SQLite で動いていた）
+
+```bash
+# 全テスト実行
+docker compose exec app php artisan test
+
+# Unit / Feature を個別に実行
+docker compose exec app php artisan test --testsuite=Unit
+docker compose exec app php artisan test --testsuite=Feature
+
+# 特定のテストクラスだけ実行
+docker compose exec app php artisan test --filter=PriceCalculatorTest
+
+# カバレッジ計測（PCOV を使用）
+docker compose exec app php artisan test --coverage
+docker compose exec app php artisan test --coverage --min=70   # 70%未満なら失敗させる
+
+# HTML レポートを出力（coverage/ は .gitignore 済み）
+docker compose exec app php artisan test --coverage-html coverage
+```
+
+カバレッジ計測用に `docker/php/Dockerfile` へ PCOV を追加している（追加後は `docker compose build app` で再ビルド）。
+```dockerfile
+RUN pecl install pcov && docker-php-ext-enable pcov
+```
+
+## 実行結果
+
+```
+Tests:    160 passed (297 assertions)
+Total:    84.0 %
+```
+
+- 全 **160 テスト**が成功
+- コードカバレッジ **84.0%**（目標の70%以上を達成）
+- `app/Services/` 配下（`PriceCalculator` / `PostService` / `TaskService`）、Policy、Repository、
+  `PostController` / `ThreadController` / `ReplyController` は **100%**
+
+## テストの構成
+
+| ディレクトリ | 対象 | 主な内容 |
+|---|---|---|
+| `tests/Unit/Services/` | Service層 | `PriceCalculator`（12件）、`PostService`、`TaskService` |
+| `tests/Unit/Models/` | モデル | リレーション、`isOwnedBy()` などのメソッド |
+| `tests/Unit/Policies/` | 認可ポリシー | `PostPolicy` / `TaskPolicy`（所有者のみ更新・削除可） |
+| `tests/Unit/Repositories/` | Repository | 検索・取得・並び順 |
+| `tests/Unit/Resources/` | APIリソース | JSON に出力される項目 |
+| `tests/Feature/Auth/` | 認証（Breeze） | 登録、ログイン/ログアウト、パスワードリセット等 |
+| `tests/Feature/*ControllerTest.php` | CRUD | Post / Product / Thread / Reply / Task |
+| `tests/Feature/Api/` | API | 投稿 API |
+| `tests/Feature/CheckoutTest.php` ほか | 決済 | Checkout、Stripe Webhook |
+
+テスト用データは `database/factories/` の各 Factory（`PostFactory` / `ProductFactory` / `ThreadFactory` /
+`ReplyFactory` / `TaskFactory` / `PurchaseFactory`）で生成している。そのため各モデルに `HasFactory` を追加した。
+
+## 練習課題1：ユニットテスト（Service層）
+
+対象: `app/Services/PriceCalculator.php`（`tests/Unit/Services/PriceCalculatorTest.php`）
+
+DB に依存しない純粋なロジックなので、`PHPUnit\Framework\TestCase` を継承し Laravel を起動せずに高速に実行できる。
+
+### テストケース設計（同値分割・境界値分析）
+
+**`calculateTotal(int $price, int $quantity, float $taxRate = 0.1)`**
+
+| 分類 | 入力 | 期待結果 |
+|---|---|---|
+| 正常系 | 税率デフォルト（10%） | 小計 + 10% |
+| 正常系 | 税率を指定 | 指定した税率で計算 |
+| 境界値 | 税率 0 | 小計のまま |
+| 境界値 | 数量 0 | 0 |
+| 境界値 | 税額に小数が出る | 切り捨てて整数を返す |
+| 異常系 | 価格がマイナス | `InvalidArgumentException` |
+| 異常系 | 数量がマイナス | `InvalidArgumentException` |
+
+**`applyDiscount(int $price, int $discountPercent)`**
+
+有効な同値クラスは `0〜100`、無効なクラスは `0未満` と `100超`。境界の 0 / 100 とその外側をテストしている。
+
+| 分類 | 割引率 | 期待結果 |
+|---|---|---|
+| 正常系 | 通常の割引率 | 割引後の価格 |
+| 境界値（下限） | 0 | 元の価格のまま |
+| 境界値（上限） | 100 | 0 |
+| 異常系（下限の外） | マイナス | `InvalidArgumentException` |
+| 異常系（上限の外） | 100超 | `InvalidArgumentException` |
+
+`PostService` / `TaskService` は Repository 経由で DB に保存するため、`RefreshDatabase` を使って
+作成・更新・削除が DB に反映されることを確認している。
+
+## 練習課題2：Feature Test
+
+### 認証
+| 機能 | テスト内容 |
+|---|---|
+| ユーザー登録 | フォーム送信 → ユーザーが作成されログイン状態になる → ダッシュボードへリダイレクト。登録後にウェルカムメールが送信されること |
+| ログイン | 正しい認証情報でログイン成功 / 誤ったパスワードではログインできない |
+| ログアウト | ログアウト後にゲスト状態になる |
+
+### 投稿の CRUD（`PostControllerTest` ほか）
+| 操作 | テスト内容 |
+|---|---|
+| 表示 | 一覧・詳細は未ログインでも閲覧可能 |
+| 作成 | 未ログインはログイン画面へリダイレクト / ログイン時は DB に保存される |
+| 更新 | 所有者は更新できる |
+| 削除 | 所有者は削除できる（DB から消える） |
+
+Product / Thread / Reply / Task も同じ観点で CRUD をテストしている。
+
+### 認可
+他ユーザーの投稿に対して `edit` / `update` / `destroy` を実行すると **403** になることを確認（削除はレコードが DB に残っていることも確認）。
+
+### バリデーション・エッジケース
+- 必須項目が空 → エラー（Post / Product / Thread / Task）
+- 文字数の上限超過（投稿タイトル、スレッド本文）
+- 不正なカテゴリー・ステータス（選択肢以外の値）
+- 価格がマイナス（Product）
+- Task の期限日: 作成時は**過去日はエラー・当日はOK**（境界値）、更新時は過去日も許可
+- 商品画像のアップロード・差し替え時に古い画像が削除されること（`Storage::fake()`）
+
+## 練習課題3：TDD 実践
+
+> 未実施（今後「いいね数カウント」などを Red → Green → Refactor の手順で追加予定）
+
+## 静的解析・セキュリティスキャン
+
+### ESLint
+ESLint 9（Flat Config）を導入し、`eslint.config.js` に設定。
+```bash
+npx eslint resources/js
+```
+| ルール | 設定 | 理由 |
+|---|---|---|
+| `no-unused-vars` | error | 未使用変数を残さない |
+| `no-console` | warn | `console.log` を本番に残さない |
+| `eqeqeq` | error | `==` ではなく `===` を強制 |
+
+実行結果: `resources/js/app.js`・`bootstrap.js` で `'window' is not defined (no-undef)` が3件検出された。
+ブラウザ用のグローバル変数が未定義扱いになっているためで、`globals` パッケージの
+`globals.browser` を `languageOptions.globals` に設定すれば解消できる（未対応）。
+
+### npm audit / composer audit
+```bash
+npm audit
+docker compose exec app composer audit
+```
+
+| ツール | 結果 |
+|---|---|
+| `composer audit` | 脆弱性なし（No security vulnerability advisories found） |
+| `npm audit` | 9件（critical 2 / high 5 / moderate 2） |
+
+`npm audit` の内訳は、直接依存の `concurrently`（→ `shell-quote`）と `tailwindcss` v3 系の依存
+（`braces` / `chokidar` / `micromatch` / `fast-glob` / `postcss-*`）。いずれも開発時のビルドツールで、
+本番で配信されるコードには含まれない。`concurrently` 等は `npm audit fix` で修正可能、
+`tailwindcss` はメジャーバージョンアップ（v4）が必要なため影響を確認してから対応する。
+
+## Week 14 完了チェックリスト
+
+- [x] テストケース設計（同値分割・境界値分析）ができる
+- [x] 境界値テストを書ける
+- [x] PHPUnit でユニットテストを書ける
+- [x] Feature Test で統合テストを書ける
+- [x] コードカバレッジを測定できる（84.0%）
+- [x] ESLint で静的解析を導入できた
+- [x] npm audit / composer audit でセキュリティスキャンができる
+- [ ] TDD の概念を理解している（練習課題3 未実施）
+
+---
+
+# Week15：GitHub Actions で CI/CD
+
+## パイプラインの全体像
+
+`.github/workflows/pipeline.yml` に、Lint → テスト → デプロイを1本のパイプラインとしてまとめた。
+
+```
+push / pull_request
+   │
+   ▼
+┌────────────┐    ┌───────────────────┐    ┌──────────────────────────────┐
+│ Lint        │ →  │ Test               │ →  │ Deploy                        │
+│ CS Fixer    │    │ PHPUnit + カバレッジ │    │ week9/refactoring   → staging   │
+│ PHPStan     │    │ （70%未満で失敗）     │    │ week6/laravel-setup → production│
+└────────────┘    └───────────────────┘    └──────────────────────────────┘
+```
+
+| ブランチ | push 時の動作 |
+|---|---|
+| `week9/refactoring` | Lint → テスト → **ステージング環境へデプロイ** |
+| `week6/laravel-setup`（デフォルトブランチ＝本番用） | Lint → テスト → **本番環境へデプロイ** |
+| `week6/laravel-setup` への Pull Request | Lint → テストのみ（デプロイしない） |
+
+- 前のジョブが失敗すると次へ進まない（`needs:`）。Lint かテストが落ちたコードはデプロイされない。
+- 課題文の「main ブランチ」は、このリポジトリではデフォルトブランチの `week6/laravel-setup` が該当する。
+- JavaScript のテスト（Vitest）は `.github/workflows/frontend-test.yml` で別に実行している。
+
+## 基本課題・練習課題2：Lint 自動チェック（PHP CS Fixer / PHPStan）
+
+### PHP CS Fixer
+- 設定ファイル: `.php-cs-fixer.php`（ルールは `@auto` / `@auto:risky`）
+- チェック対象を `app/` `config/` `database/` `routes/` `tests/` に限定した
+  （最初は全体が対象で、`storage/framework/views` の Blade キャッシュまで検査していたため）
+- CI では `--dry-run` で実行し、整形されていない箇所があれば失敗する
+
+```bash
+docker compose exec app vendor/bin/php-cs-fixer fix --dry-run --diff   # チェックのみ
+docker compose exec app vendor/bin/php-cs-fixer fix                    # 自動整形
+```
+
+### PHPStan（+ Larastan）
+- Laravel 特有の書き方（Eloquent のリレーションなど）を解析できるよう **Larastan** を追加
+- 設定ファイル: `phpstan.neon`（解析対象 `app/`、レベル 5）
+
+```bash
+docker compose exec app vendor/bin/phpstan analyse --memory-limit=1G
+```
+
+最初の実行で **28件** のエラーが出たので、次のように対応した。
+
+| 指摘 | 対応 |
+|---|---|
+| モデルのリレーションに戻り値の型がない | `BelongsTo` / `HasMany` の戻り値型を追加 |
+| `PostResource` のプロパティが不明 | `@mixin \App\Models\Post` を追加 |
+| Stripe の Webhook オブジェクトの型が不明 | `@var \Stripe\PaymentIntent` を付け、metadata は配列アクセスに変更 |
+| `SendWelcomeEmail` / `VerifyEmailController` / `LoginRequest` の型 | 型注釈・`toString()` を追加 |
+| **`ItemController` が存在しない `App\Models\Item` を使っている** | **未対応（実際のバグ）**。`/api/items` は 500 エラーになる。`phpstan-baseline.neon` に記録して既知の問題として扱い、新しいエラーは CI で検出されるようにした |
+
+修正後も全テスト（160件）が成功することを確認済み。
+
+## 基本課題・練習課題1：自動テストとカバレッジレポート
+
+- PHPUnit を PCOV 付きで実行し、カバレッジを3形式で出力
+  - テキスト → Actions の **Summary** 画面に表示
+  - HTML → **Artifacts（coverage-report）** としてダウンロード可能
+  - Clover XML → カバレッジ率の判定に使用
+- カバレッジが **70% 未満ならジョブを失敗** させる（現在 84.1%）
+
+### ハマりポイント：カバレッジが 0% になった
+`src/`（Vitest 用）フォルダを作った後、カバレッジが 0% になった。PCOV は計測対象のフォルダを
+指定しないと `src/` を優先して自動選択するため、`app/` が計測されていなかった。
+CI（`ini-values: pcov.directory=app`）と Dockerfile（`pcov.directory=/var/www/html/app`）で明示して解決した。
+Dockerfile を変更したので、ローカルでは `docker compose build app` で再ビルドが必要。
+
+### 確認方法
+GitHub → **Actions** → 「CI/CD Pipeline」の実行 → ページ下部の **Summary** にカバレッジが表示される。
+
+## 練習課題3：ステージング・本番への自動デプロイ
+
+GitHub の **Environments** を使い、`staging` と `production` で接続先を分けている。
+デプロイ処理は、サーバーに SSH 接続して以下を実行する（本番構成は `docker-compose.yml` のみ使用）。
+
+```bash
+cd ~/app
+git pull --ff-only origin <ブランチ>
+docker compose -f docker-compose.yml up -d --build
+docker compose -f docker-compose.yml exec -T app composer install --no-dev --optimize-autoloader
+docker compose -f docker-compose.yml exec -T app php artisan migrate --force
+docker compose -f docker-compose.yml exec -T app php artisan config:cache   # route:cache / view:cache も
+```
+
+### GitHub 側の設定（Settings → Environments）
+`staging` と `production` の2つの Environment を作り、それぞれに登録する。
+
+| 種類 | 名前 | 内容 |
+|---|---|---|
+| Secret | `SSH_HOST` | サーバーの IP アドレスまたはドメイン |
+| Secret | `SSH_USERNAME` | `ubuntu` |
+| Secret | `SSH_PRIVATE_KEY` | EC2 の秘密鍵（`.pem` の中身） |
+| Variable | `APP_DIR`（任意） | アプリの場所。未設定なら `~/app` |
+| Variable | `APP_URL`（任意） | Actions 画面に表示するアプリの URL |
+
+- Secrets が未登録の環境では、デプロイを**スキップして警告を表示**する（パイプラインは失敗にしない）。
+- `production` に **Required reviewers** を設定すると、本番デプロイ前に承認を求められる。
+- デプロイ用の SSH 接続を許可するため、EC2 のセキュリティグループで 22 番ポートを GitHub Actions から到達可能にする必要がある
+  （現在は自分の IP のみ許可しているため、そのままでは接続できない）。
+
+## 整理したワークフロー
+
+| ファイル | 状態 |
+|---|---|
+| `pipeline.yml` | Lint・テスト・デプロイをまとめたメインのパイプライン |
+| `frontend-test.yml` | Vitest（自動）と Cypress（手動実行のみ）。Node を 20 → 22 に変更。Vitest 専用の `vitest.config.js` を追加（`vite.config.js` の laravel-vite-plugin が CI 環境で起動を拒否し失敗していたため） |
+| `ci.yml` / `test.yml` / `lint.yml` / `debloy.yml` | 内容が `pipeline.yml` と重複していたため削除 |
+
+---
+
+# Week16：最適化された Dockerfile
+
+プロジェクト直下の `Dockerfile` が本番用の最適化イメージ。
+ローカル開発用は従来どおり `docker/php/Dockerfile`（`docker-compose.yml` から使用）。
+
+```bash
+docker build -t laravel-app:prod .
+docker images laravel-app:prod
+```
+
+## 要件と対応
+
+| 要件 | 対応内容 |
+|---|---|
+| マルチステージビルド | `vendor`（Composer）→ `assets`（Vite で CSS/JS をビルド）→ `runtime`（実行用）の3段階。Composer・Node.js・ビルド用のファイルは最終イメージに含まれない |
+| Alpine Linux ベース | `php:8.2-fpm-alpine` / `php:8.2-cli-alpine` / `node:22-alpine` |
+| イメージサイズ 300MB 以下 | **194MB**（最初の試作は 344MB。練習課題2の脆弱性修正で 184MB → 194MB） |
+| 非rootユーザーで実行 | `USER www-data`。ファイルの所有者も `www-data` |
+| ヘルスチェック | `HEALTHCHECK` で 30 秒ごとに PHP-FPM の `/ping` に問い合わせ、`pong` が返れば正常 |
+| `.dockerignore` | 「全部除外 → 必要なものだけ許可」する allowlist 方式で作成 |
+
+その他の最適化:
+- PHP 拡張は本番で使う `pdo_mysql` と `opcache` だけにした（開発用にあった gd・pdo_pgsql 等は不使用のため外した）
+- `php.ini-production` と OPcache を有効化
+- `composer.json` / `package.json` を先にコピーして依存をインストールし、ソースだけ変更したときはビルドキャッシュが効くようにした
+
+## イメージサイズを 344MB → 184MB にした方法
+
+`docker history` と `du` で中身を調べ、大きかった2つを削った。
+
+| 原因 | サイズ | 対応 |
+|---|---|---|
+| プロジェクト内の別フォルダ（`my-frontend/` の node_modules、`techmeets-month2/` など）がコピーされていた | 約 73MB | `.dockerignore` を allowlist 方式に変更 |
+| AWS SDK に 400 以上の AWS サービスの定義が入っていた（使うのは S3 だけ） | 約 58MB | AWS SDK 公式の `removeUnusedServices` を `composer.json` に設定し、S3（と認証用の Sts / SSO / SSOOIDC）以外を削除 |
+
+## 気付いた問題：別フォルダの `.env` がイメージに入っていた
+最初の `.dockerignore` は「除外したいものを列挙する」方式で、直下の `.env` しか除外していなかった。
+そのため `techmeets-month2/.env` がイメージに入ってしまっていた（push 前に気付き、イメージは削除済み）。
+allowlist 方式にしたことで、許可したフォルダ以外は入らず、`**/.env` も全階層で除外される。
+
+## 動作確認
+
+| 確認内容 | 結果 |
+|---|---|
+| イメージサイズ | 194MB |
+| 実行ユーザー（`ps`） | php-fpm のプロセスはすべて `www-data` |
+| ヘルスチェック（`docker inspect`） | 起動後 `healthy` |
+| イメージ内の `.env` | なし |
+| PHP-FPM 経由で `/login` を表示 | ログイン画面の HTML が返る |
+| 既存のテスト | 160 件すべて成功 |
+
+## 練習課題1：イメージサイズ削減（before / after）
+
+既存の開発用イメージ（`docker/php/Dockerfile`）と、最適化した本番用イメージ（直下の `Dockerfile`）を比較した。
+
+```bash
+docker images
+```
+
+| | イメージ | ベースイメージ | ディスク使用量 | 圧縮後（push 時の転送量） |
+|---|---|---|---|---|
+| **before** | `laravel-docker-app-app:latest` | `php:8.2-fpm`（Debian） | **847MB** | 221MB |
+| **after** | `laravel-app:prod` | `php:8.2-fpm-alpine` | **194MB** | 42.4MB |
+| **削減率** | | | **77.1% 削減** | **80.8% 削減** |
+
+> before のイメージにはアプリのコードと `vendor/` が入っていない（開発時はボリュームでマウントしているため）。
+> after はコードと `vendor/` まで含めた上でこのサイズなので、同じ中身で比べれば差はさらに大きい。
+
+### 何が減ったか（`docker history` で比較）
+
+| 項目 | before | after | 対応 |
+|---|---|---|---|
+| ベースイメージ | 698MB（Debian） | 118MB（Alpine） | Alpine Linux に変更（**約580MB 減**） |
+| apt / apk で追加したパッケージ | 99.5MB（git, curl, zip, ping, dig など） | 8.65MB（fcgi と、脆弱性修正のための `apk upgrade`） | 実行に不要な開発・調査用ツールを入れない |
+| PHP 拡張 | pdo_mysql, pdo_pgsql, mbstring, exif, pcntl, bcmath, gd, pcov | pdo_mysql, opcache | 本番で使う拡張だけにした |
+| Composer 本体 | 3.65MB | なし | ビルド用ステージだけで使い、最終イメージには入れない（マルチステージ） |
+| `vendor/` | （マウント） | 56.3MB | `--no-dev` で開発用パッケージを除外、AWS SDK の未使用サービスを削除 |
+
+ベースイメージを Alpine に変えたことが一番効いている。Debian 版の `php:8.2-fpm` は、
+それだけで after のイメージ全体（194MB）の約3.6倍ある。
+
+## 練習課題2：セキュリティ対策（Trivy）
+
+Trivy（`winget install AquaSecurity.Trivy`）でイメージと Dockerfile をスキャンした。
+
+```bash
+trivy image laravel-app:prod                              # 全深刻度
+trivy image --severity HIGH,CRITICAL laravel-app:prod     # 深刻度が高いものだけ
+trivy image --scanners secret laravel-app:prod            # 秘密情報（APIキー等）の混入
+trivy config Dockerfile                                   # Dockerfile の設定ミス
+```
+
+### スキャン結果
+
+| 対象 | CRITICAL | HIGH | MEDIUM | LOW / UNKNOWN | 合計 |
+|---|---|---|---|---|---|
+| 既存イメージ `laravel-docker-app-app`（Debian） | 7 | 150 | 940 | 1,009 | **2,106** |
+| 最適化イメージ（修正前） | 0 | 0 | 2 | 0 | **2** |
+| 最適化イメージ（修正後） | 0 | 0 | 0 | 0 | **0** |
+
+- **Alpine 化とパッケージの削減だけで 2,106件 → 2件**になった。入っているソフトが少ないほど、脆弱性も少ない
+- 残った2件は Alpine の OS パッケージ（`nghttp2-libs` 1.69.0 → 修正版 1.70.0、`zlib` 1.3.2-r0 → 1.3.2-r1）。
+  ベースイメージが作られた後に修正版が出ていたもので、Dockerfile に **`apk upgrade --no-cache`** を追加して解消した
+- 秘密情報スキャン: 検出なし（`.env` などは含まれていない）
+- Dockerfile の設定ミス: 0件（非root ユーザー・HEALTHCHECK を設定済みのため）
+
+### CI での自動スキャン
+`pipeline.yml` に **Security scan** ジョブを追加した。本番用イメージをビルドして Trivy で検査し、
+修正版がある HIGH / CRITICAL の脆弱性、または Dockerfile の重大な設定ミスが見つかったら失敗する。
+デプロイは Lint・テスト・セキュリティスキャンがすべて成功したときだけ実行される。
+
+## 練習課題3：ログ収集（Grafana Loki + Alloy + Grafana）
+
+全コンテナのログを1か所に集め、ブラウザで検索できるようにした。
+
+```
+ nginx / app / db ...  ──stdout/stderr──▶  Alloy（収集） ──▶  Loki（保存・検索） ◀──  Grafana（画面）
+```
+
+| ファイル | 役割 |
+|---|---|
+| `docker-compose.logging.yml` | Loki・Alloy・Grafana を追加し、Laravel のログを JSON で標準エラーにも出力させる |
+| `docker/logging/config.alloy` | Docker のコンテナログを収集し、ラベルを付けて Loki に送る |
+| `docker/logging/loki-config.yml` | Loki の設定（保存期間 7日） |
+| `docker/logging/grafana-datasources.yml` | Grafana に Loki を自動登録 |
+
+### 起動と確認
+
+```bash
+docker compose -f docker-compose.yml -f docker-compose.override.yml -f docker-compose.logging.yml up -d
+```
+
+http://localhost:3000 → 左メニュー **Explore** → データソース **Loki** で検索する。
+
+| 検索したいもの | LogQL（Explore に入力） |
+|---|---|
+| アプリのエラーログ | `{service="app", level="ERROR"}` |
+| Nginx の 404 / 5xx | `{service="nginx", status=~"404\|5.."}` |
+| 特定の文字列を含むログ | `{service="app"} \|= "Stripe"` |
+| ステータスコード別のアクセス数 | `sum by (status) (count_over_time({service="nginx"}[1h]))` |
+
+### 工夫した点
+- **Laravel のログを JSON で標準エラーに出力**（`LOG_STACK=single,stderr`、`LOG_STDERR_FORMATTER=JsonFormatter`）。
+  ファイル（`storage/logs/laravel.log`）にも従来どおり出力される
+- Alloy でログを解析してラベルを付与: `service`（nginx / app / db ...）、`level`（Laravel のログレベル）、`status`（Nginx の HTTP ステータス）
+- ログの保存期間を 7日にし、古いログは自動削除（ディスクを圧迫しない）
+- 通常の `docker compose up -d` には影響しない（ログ基盤は必要なときだけ起動する）
+
+### 動作確認の結果
+- 7つのコンテナ（nginx, app, db, phpmyadmin, loki, alloy, grafana）すべてのログが Loki に届いた
+- `/api/items` にアクセスすると、Laravel の `Class "App\Models\Item" not found` エラーが
+  `level="ERROR"` 付きで検索できた（Week15 で PHPStan が検出した既知のバグ）
+- Nginx のアクセスログをステータスコード別に集計できた（200: 16件, 302: 1件, 404: 1件, 504: 1件）
+- ログ収集あり／なしで応答時間に差がないことを確認（どちらも約 6.6秒。遅いのは Windows のフォルダ共有によるもの）
+
+### 本番（EC2）での運用案
+同じ構成を EC2 で動かすこともできるが、サーバーが落ちるとログも見られなくなる。
+本番では Docker の `awslogs` ログドライバーで **CloudWatch Logs** に送る方法が適している
+（`docker-compose.yml` の各サービスに `logging: driver: awslogs` を設定し、EC2 の IAM ロールに書き込み権限を付与）。
+
+---
+
+# Week17：パフォーマンス計測と改善
+
+## 結果（Lighthouse・モバイル）
+
+| ページ | | Performance | Accessibility | Best Practices | SEO | FCP | LCP | TBT | サーバー応答 |
+|---|---|---|---|---|---|---|---|---|---|
+| `/posts` | **before** | 54 | 83 | 100 | 82 | 7.0 s | 7.0 s | 180 ms | 22,340 ms |
+| | after（開発環境のまま） | 64 | 95 | 100 | 91 | 4.7 s | 4.7 s | 80 ms | 19,410 ms |
+| | **after（本番構成）** | **99** | **100** | **100** | **100** | 1.8 s | 1.8 s | 0 ms | **60 ms** |
+| `/threads` | **before** | 46 | 84 | 100 | 82 | 6.5 s | 6.5 s | 460 ms | 22,480 ms |
+| | after（開発環境のまま） | 65 | 95 | 100 | 91 | 4.5 s | 4.5 s | 110 ms | 10,340 ms |
+| | **after（本番構成）** | **99** | **100** | **100** | **100** | 1.7 s | 1.7 s | 0 ms | **80 ms** |
+
+- レポート: `docs/lighthouse/`（`before-*` / `after-dev-*` / `after-*` の `.report.html` をブラウザで開く）
+- 計測データ: `PerformanceSeeder` で 投稿 20,000件・スレッド 2,000件・レス 20,000件・商品 2,000件・ユーザー 100人
+- 「本番構成」は `docker-compose.perf.yml` で app を本番用イメージ（Week16 の Dockerfile）に差し替え、`php artisan optimize` したもの
+
+```bash
+docker compose exec app php artisan db:seed --class=PerformanceSeeder   # 計測用データ
+npx lighthouse http://localhost/posts --view                            # 計測
+```
+
+## 1. N+1 問題（eager loading）
+
+### 特定方法
+- `AppServiceProvider` に `Model::preventLazyLoading()` を追加（本番以外）。一覧で取得したモデルのリレーションを
+  eager loading せずに参照すると例外になるので、N+1 を書いた時点で気付ける
+- 各ページの SQL をすべて記録し、クエリ数と時間を比較した
+
+### 結果
+主要ページ（投稿・掲示板）は Week8 の時点で `with()` による eager loading を実装済みで、N+1 は残っていなかった。
+eager loading の効果を確認するため、同じ一覧を書き方を変えて取得し比較した。
+
+| 一覧 | 書き方 | クエリ数 | DB時間 |
+|---|---|---|---|
+| `/posts`（10件） | eager loading なし（N+1） | 12 | 17.7 ms |
+| | `with('user')` | **3** | **7.2 ms** |
+| `/threads`（20件） | eager loading なし（N+1） | 42 | 50.7 ms |
+| | `with(['user', 'replies'])` ※修正前 | 4 | 8.4 ms |
+| | `with('user')->withCount('replies')` ※修正後 | **3** | **5.9 ms** |
+
+### 修正したもの：掲示板一覧の読み込みすぎ
+`/threads` はレス「数」を表示するだけなのに、`with('replies')` で**全レスの本文（20件で190行）**を読み込んでいた。
+`withCount('replies')` に変更し、件数だけを SQL で数えるようにした（ビューは `$thread->replies_count`）。
+
+## 2. スロークエリ（インデックス）
+
+一覧ページの `latest()`（`ORDER BY created_at DESC`）に使えるインデックスが無かった。
+`EXPLAIN ANALYZE` で確認すると、10件取るために**全件を読んで並び替えて**いた。
+
+```sql
+select * from posts order by created_at desc limit 10;
+```
+
+| | 実行計画 | 読んだ行数 | 実行時間 |
+|---|---|---|---|
+| before | Table scan on posts → Sort | 20,000 行 | **69.1 ms** |
+| after | Index scan on posts using posts_created_at_index (reverse) | 10 行 | **0.27 ms** |
+
+マイグレーション `xxxx_zz_add_created_at_indexes_for_listing.php` で以下を追加した（約250倍高速化）。
+
+| テーブル | インデックス | 対象のクエリ |
+|---|---|---|
+| posts / threads / products | `created_at` | 一覧の新しい順（`latest()`） |
+| replies | `(thread_id, created_at)` | スレッド詳細のレス一覧（`where thread_id = ? order by created_at`） |
+
+## 3. フロントエンド（Lighthouse の指摘への対応）
+
+| 指摘 | 対応 |
+|---|---|
+| Render-blocking resources / Reduce unused JavaScript | Tailwind の CDN（ブラウザ上で CSS を生成する 124KB の JS）をやめ、Vite でビルドした CSS（gzip 後 7KB）に変更 |
+| Enable text compression | Nginx で gzip を有効化 |
+| Serve static assets with an efficient cache policy | ビルド済みファイル（`/build/`）に1年間のキャッシュを設定（ファイル名にハッシュが付くので安全） |
+| Buttons / Links do not have an accessible name | メニューボタンとロゴのリンクに `aria-label` を追加 |
+| Insufficient color contrast | 日付などの文字色を `text-gray-400` → `text-gray-500` に変更 |
+| Document does not have a meta description | レイアウトに `<meta name="description">` を追加 |
+
+CDN をやめたことで、これまで読み込まれていなかった `app.js`（Alpine.js）も読み込まれるようになり、
+スマホ表示のメニューボタンが動くようになった。
+
+## 4. サーバー応答時間（22秒 → 0.06秒）
+
+開発環境では1ページ約20秒かかっていた。原因を調べると、SQL や処理自体は 0.2秒程度で、残りは
+**Windows のフォルダを Docker と共有していることによるファイル読み込みの遅さ**だった
+（Laravel は1リクエストで1,000以上の PHP ファイルを読む。`.env` の読み込みだけで 0.65秒）。
+本番用イメージ（コードをイメージ内に持つ・OPcache・`php artisan optimize`）で動かすと 0.06〜0.08秒になった。
+
+## 注意点（このWeekの変更で必要になったこと）
+- **CSS/JS のビルドが必要になった**: 画面を表示する前に `npm run build`（開発中は `npm run dev`）を実行する
+- **デプロイ**: `pipeline.yml` のデプロイ処理に、サーバー上で `npm run build` する手順を追加した
+- **テスト**: `tests/TestCase.php` で `withoutVite()` を呼び、ビルドなしでもテストできるようにした
+- 本番用 Dockerfile の CSS ビルドに `tailwind.config.js` / `postcss.config.js` が渡っておらず、
+  Tailwind が実行されていなかった不具合を修正した
+
+## 練習課題1：N+1 問題の解消（クエリ数の before / after）
+
+PR 本文（`docs/pr/week17-performance.md`）に記録した。セッションの読み書き（2クエリ）を除いた数。
+
+| 一覧 | 書き方 | クエリ数 | DB時間 |
+|---|---|---|---|
+| `/posts`（10件） | before: eager loading なし（N+1） | 12 | 16.1 ms |
+| | after: `with('user')` | **3** | **7.7 ms** |
+| `/threads`（20件） | before: eager loading なし（N+1） | 42 | 52.0 ms |
+| | before: `with(['user', 'replies'])`（レス本文 197行を読み込み） | 4 | 7.7 ms |
+| | after: `with('user')->withCount('replies')` | **3** | **4.5 ms** |
+
+## 練習課題2：キャッシュ導入（投稿一覧）
+
+`PostRepository::getPublished()` の結果を **Redis** にキャッシュした（画面 `/posts` と API `/api/posts` の両方に効く）。
+
+- キャッシュキー: `posts:index:v{世代番号}:page:{ページ番号}`（有効期間 10分）
+- 投稿の作成・更新・削除時は、`Post` モデルの `saved` / `deleted` イベントで**世代番号を1つ進める**。
+  ページごとにキーが違うため1つずつ消すのは難しいが、世代番号が変われば全ページの古いキャッシュが使われなくなる
+- 使うために phpredis 拡張を Dockerfile（開発用・本番用）に追加し、`.env` を `CACHE_STORE=redis` / `REDIS_HOST=redis` にした
+
+| | キャッシュなし | キャッシュあり（Redis） |
+|---|---|---|
+| 1ページ目の一覧取得 | 8.23 ms / 3クエリ | **0.94 ms / 0クエリ** |
+| 500ページ目の一覧取得 | 189.69 ms / 3クエリ | **1.17 ms / 0クエリ** |
+| HTTP `/posts?page=500`（30回の中央値） | 458 ms | **270 ms** |
+| HTTP `/posts`（30回の中央値） | 267〜285 ms | 269 ms |
+
+- 1ページ目はインデックス追加で既に速いため、HTTP 全体では差が出にくい。後ろのページほど効果が大きい
+- HTTP の時間には Docker Desktop（Windows）の固定オーバーヘッドが約230ms 含まれる（何もしない `/up` でも 240ms）
+- 比較は `docker-compose.perf.yml` で `CACHE_STORE=null`（キャッシュ無効）と `redis` を切り替えて行った
+- テスト: 2回目は SQL を発行しない／作成・削除するとキャッシュが更新される／ページごとに別のキャッシュ、の4件を追加
+
+## 練習課題3：画像最適化（WebP 変換・CDN 配信）
+
+### WebP 変換
+`App\Services\ImageOptimizer` を作成し、商品画像のアップロード時（登録・更新）に使うようにした。
+
+- JPEG / PNG / GIF / WebP を読み込み、**WebP（品質80）**で保存
+- 横幅が **1200px** を超える画像は縮小（縦横比は維持）
+- ファイル名は UUID（毎回ユニーク）。S3 に `Content-Type: image/webp` と
+  `Cache-Control: public, max-age=31536000, immutable` を付けて保存し、CDN・ブラウザに1年間キャッシュさせる
+- GD 拡張を JPEG / WebP 対応でビルドするよう Dockerfile を変更（これまでの GD は PNG しか扱えなかった）
+
+| 元画像 | 元サイズ | WebP | 削減率 |
+|---|---|---|---|
+| 写真 3000×2000 JPEG | 950.5 KB | 195.0 KB（1200×800） | **79%** |
+| 写真 1600×1067 JPEG | 404.4 KB | 244.0 KB（1200×800） | **40%** |
+| 写真 1600×1067 PNG | 3,392.3 KB | 244.0 KB（1200×800） | **93%** |
+
+テスト: JPEG・PNG の変換、縮小（境界値 1200px ちょうどは縮小しない）、サイズが小さくなること、画像以外は例外、の7件を追加。
+
+### CloudFront 経由の配信
+`.env` の `AWS_URL` に CloudFront のドメインを設定すると、`Storage::disk('s3')->url()` が CloudFront の URL を返す
+（ビューの変更は不要）。
+
+1. **CloudFront ディストリビューションを作成**（AWS コンソール → CloudFront → ディストリビューションを作成）
+   - オリジン: 画像を保存している S3 バケット
+   - オリジンアクセス: **Origin access control（OAC）** を作成して選択（S3 を直接公開しない）
+   - キャッシュポリシー: `CachingOptimized`（S3 に付けた `Cache-Control` に従ってキャッシュ）
+   - ビューワープロトコル: `Redirect HTTP to HTTPS`
+2. **S3 のバケットポリシーを更新**（作成画面に表示されるポリシーをコピーして貼り付け）。
+   CloudFront からの読み取りだけを許可し、「パブリックアクセスをすべてブロック」はオンのままにする
+3. **アプリに設定**
+   ```env
+   AWS_URL=https://dxxxxxxxxxxxxx.cloudfront.net
+   ```
+   ```bash
+   docker compose exec app php artisan config:clear
+   ```
+4. **確認**: 商品画像の URL が `https://dxxxx.cloudfront.net/products/xxxx.webp` になり、
+   `curl -I` で `content-type: image/webp`、2回目以降に `x-cache: Hit from cloudfront` が返る
+
+> 既にアップロード済みの画像（JPEG / PNG）はそのまま表示される。WebP に揃える場合は再アップロードする。

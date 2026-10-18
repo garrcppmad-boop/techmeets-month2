@@ -1,0 +1,43 @@
+parameters:
+	ignoreErrors:
+		-
+			message: '#^Call to static method all\(\) on an unknown class App\\Models\\Item\.$#'
+			identifier: class.notFound
+			count: 1
+			path: app/Http/Controllers/Api/ItemController.php
+
+		-
+			message: '#^Call to static method create\(\) on an unknown class App\\Models\\Item\.$#'
+			identifier: class.notFound
+			count: 1
+			path: app/Http/Controllers/Api/ItemController.php
+
+		-
+			message: '#^Call to static method findOrFail\(\) on an unknown class App\\Models\\Item\.$#'
+			identifier: class.notFound
+			count: 1
+			path: app/Http/Controllers/Api/ItemController.php
+
+		-
+			message: '#^Access to an undefined property App\\Http\\Resources\\ItemResource\:\:\$created_at\.$#'
+			identifier: property.notFound
+			count: 1
+			path: app/Http/Resources/ItemResource.php
+
+		-
+			message: '#^Access to an undefined property App\\Http\\Resources\\ItemResource\:\:\$id\.$#'
+			identifier: property.notFound
+			count: 1
+			path: app/Http/Resources/ItemResource.php
+
+		-
+			message: '#^Access to an undefined property App\\Http\\Resources\\ItemResource\:\:\$name\.$#'
+			identifier: property.notFound
+			count: 1
+			path: app/Http/Resources/ItemResource.php
+
+		-
+			message: '#^Access to an undefined property App\\Http\\Resources\\ItemResource\:\:\$price\.$#'
+			identifier: property.notFound
+			count: 1
+			path: app/Http/Resources/ItemResource.php

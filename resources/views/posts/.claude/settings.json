@@ -1,0 +1,23 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(gh repo *)",
+      "Bash(docker-compose ps *)",
+      "Bash(docker-compose logs *)",
+      "Bash(docker-compose exec *)"
+    ],
+    "additionalDirectories": [
+      "c:\\Users\\Jambr\\techmeets\\month2\\laravel-docker-app\\app\\Http\\Controllers",
+      "c:\\Users\\Jambr\\techmeets\\month2\\laravel-docker-app\\database\\migrations",
+      "c:\\Users\\Jambr\\techmeets\\month2\\laravel-docker-app\\app\\Models",
+      "c:\\Users\\Jambr\\techmeets\\month2\\laravel-docker-app\\resources\\views\\layouts",
+      "c:\\Users\\Jambr\\techmeets\\month2\\laravel-docker-app\\resources\\views",
+      "c:\\Users\\Jambr\\techmeets\\month2\\laravel-docker-app\\routes",
+      "c:\\Users\\Jambr\\techmeets\\month2\\laravel-docker-app",
+      "c:\\Users\\Jambr\\techmeets\\month2\\laravel-docker-app\\app\\Repositories",
+      "c:\\Users\\Jambr\\techmeets\\month2\\laravel-docker-app\\app\\Services",
+      "c:\\Users\\Jambr\\techmeets\\month2\\laravel-docker-app\\app\\Policies",
+      "c:\\Users\\Jambr\\techmeets\\month2\\laravel-docker-app\\app\\Providers"
+    ]
+  }
+}

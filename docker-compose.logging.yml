@@ -1,0 +1,72 @@
+# ログ集中管理（Grafana Loki + Alloy + Grafana）
+#
+# 全コンテナ（nginx / app / db ...）の標準出力・標準エラーを Alloy が収集し、
+# Loki に保存して、Grafana の画面で検索・絞り込みできるようにする。
+#
+#   起動（ローカル）:
+#     docker compose -f docker-compose.yml -f docker-compose.override.yml -f docker-compose.logging.yml up -d
+#   画面:
+#     http://localhost:3000 → 左メニュー「Explore」→ データソース「Loki」
+#
+#   ┌───────┐ stdout/stderr ┌───────┐ push ┌──────┐ query ┌─────────┐
+#   │ nginx │──────────────▶│       │─────▶│      │◀──────│         │
+#   │ app   │   (Docker)    │ Alloy │      │ Loki │       │ Grafana │
+#   │ db    │──────────────▶│       │      │      │       │         │
+#   └───────┘               └───────┘      └──────┘       └─────────┘
+
+services:
+  # Laravel のログをファイル（storage/logs）に加えて標準エラーにも JSON で出力する
+  # → コンテナのログとして Alloy が収集できる
+  app:
+    environment:
+      - LOG_CHANNEL=stack
+      - LOG_STACK=single,stderr
+      - LOG_STDERR_FORMATTER=Monolog\Formatter\JsonFormatter
+
+  # ログの保存・検索
+  loki:
+    image: grafana/loki:3.7.0
+    command: -config.file=/etc/loki/config.yml
+    volumes:
+      - ./docker/logging/loki-config.yml:/etc/loki/config.yml:ro
+      - loki-data:/loki
+    networks:
+      - app-network
+
+  # ログの収集（Docker のコンテナログを読み取って Loki に送る）
+  alloy:
+    image: grafana/alloy:v1.20.1
+    command:
+      - run
+      - --server.http.listen-addr=0.0.0.0:12345
+      - --storage.path=/var/lib/alloy/data
+      - /etc/alloy/config.alloy
+    volumes:
+      - ./docker/logging/config.alloy:/etc/alloy/config.alloy:ro
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    depends_on:
+      - loki
+    networks:
+      - app-network
+
+  # ログの閲覧画面（ローカルからのみアクセス可）
+  grafana:
+    image: grafana/grafana:13.0.11
+    ports:
+      - "127.0.0.1:3000:3000"
+    environment:
+      # ローカル開発用: ログインなしで閲覧できるようにする（本番では使わない）
+      - GF_AUTH_ANONYMOUS_ENABLED=true
+      - GF_AUTH_ANONYMOUS_ORG_ROLE=Editor
+      - GF_AUTH_DISABLE_LOGIN_FORM=true
+    volumes:
+      - ./docker/logging/grafana-datasources.yml:/etc/grafana/provisioning/datasources/loki.yml:ro
+      - grafana-data:/var/lib/grafana
+    depends_on:
+      - loki
+    networks:
+      - app-network
+
+volumes:
+  loki-data:
+  grafana-data:

@@ -1,0 +1,27 @@
+<?php
+
+declare(strict_types=1);
+
+namespace App\Models;
+
+use Illuminate\Database\Eloquent\Factories\HasFactory;
+use Illuminate\Database\Eloquent\Model;
+
+class Product extends Model
+{
+    use HasFactory;
+
+    protected $fillable = [
+        'name',
+        'price',
+        'description',
+        'stock',
+        'category',
+        'image_path',
+    ];
+
+    public static function categories(): array
+    {
+        return ['食品', '衣類', '電子機器', '書籍', 'その他'];
+    }
+}

@@ -1,0 +1,39 @@
+name: Frontend Tests
+
+on:
+  push:
+    branches: [ week9/refactoring, week6/laravel-setup ]
+  pull_request:
+    branches: [ week6/laravel-setup ]
+  workflow_dispatch:
+
+jobs:
+  unit-test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'   # vitest / cypress は Node 22 以上が必要
+          cache: npm
+      - run: npm ci
+      - run: npm test          # vitest run
+
+  # E2E は Vite の開発サーバー（:5173）上のフロントエンド画面を前提にしたテストのため、
+  # 自動実行はせず、Actions タブの「Run workflow」から手動で実行したときだけ動かす
+  e2e-test:
+    if: github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - run: npm ci
+      - name: 開発サーバーをバックグラウンドで起動
+        run: npm run dev &
+      - name: サーバーの起動を待機
+        run: npx wait-on http://localhost:5173 --timeout 30000
+      - name: Cypress を実行（ヘッドレスモード）
+        run: npx cypress run --config-file cypress/cypress.config.js

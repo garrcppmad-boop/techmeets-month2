@@ -1,0 +1,44 @@
+# 「すべて除外 → 必要なものだけ許可」する方式（allowlist）
+#
+# 除外したいものを列挙する方式だと、プロジェクト内に別フォルダ（他の練習用リポジトリ等）が
+# 増えたときに、その中の .env などが気付かないうちにイメージへ入ってしまう。
+# この方式なら、ここで許可したもの以外は一切ビルドに使われない。
+
+# まず全部除外
+*
+
+# アプリの実行に必要なもの
+!app/
+!bootstrap/
+!config/
+!database/
+!public/
+!resources/
+!routes/
+!storage/
+!artisan
+
+# 依存パッケージの定義（中身はイメージ内でインストールする）
+!composer.json
+!composer.lock
+!package.json
+!package-lock.json
+!vite.config.js
+!postcss.config.js
+!tailwind.config.js
+
+# 許可したフォルダの中でも、生成物・キャッシュ・秘密情報は除外
+**/.env
+**/.env.*
+**/.claude
+**/.DS_Store
+bootstrap/cache/*.php
+public/build
+public/hot
+public/storage
+storage/app/**
+storage/framework/cache/**
+storage/framework/sessions/**
+storage/framework/views/**
+storage/logs/**
+database/*.sqlite

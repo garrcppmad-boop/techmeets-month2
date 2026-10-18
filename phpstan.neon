@@ -1,0 +1,12 @@
+includes:
+    - vendor/larastan/larastan/extension.neon
+    # 既知の問題（App\Models\Item が未作成）を記録したもの。新しいエラーは CI で検出される
+    - phpstan-baseline.neon
+
+parameters:
+    # 解析対象（自分たちが書いたアプリのコード）
+    paths:
+        - app/
+
+    # 0（ゆるい）〜 10（厳しい）
+    level: 5

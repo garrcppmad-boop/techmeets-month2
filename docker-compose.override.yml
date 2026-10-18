@@ -1,0 +1,52 @@
+# ローカル開発用の上書き設定。
+#
+# `docker compose up -d` を実行すると docker-compose.yml と
+# この docker-compose.override.yml が自動的にマージされる。
+# → 開発環境では下記の DB コンテナ（db / phpmyadmin）が起動し、
+#   app サービスの DB_* がこの MySQL コンテナに向けられる。
+#
+# 本番（RDS を使う）では override を無効化して起動する:
+#   docker compose -f docker-compose.yml up -d
+# この場合 DB コンテナは起動せず、app は .env の DB_* をそのまま使う。
+
+services:
+  app:
+    environment:
+      - DB_CONNECTION=mysql
+      - DB_HOST=db
+      - DB_PORT=3306
+      - DB_DATABASE=laravel
+      - DB_USERNAME=root
+      - DB_PASSWORD=secret
+    depends_on:
+      - db
+
+  # MySQL（開発用DB。本番では RDS を使うので起動しない）
+  db:
+    image: mysql:8.0
+    ports:
+      - "3306:3306"
+    environment:
+      MYSQL_DATABASE: laravel
+      MYSQL_ROOT_PASSWORD: secret
+    volumes:
+      - db-data:/var/lib/mysql   # コンテナを削除してもデータを残す
+    networks:
+      - app-network
+
+  # phpMyAdmin（開発用のDB管理ツール）
+  phpmyadmin:
+    image: phpmyadmin:latest
+    ports:
+      - "8080:80"
+    environment:
+      PMA_HOST: db
+      PMA_USER: root
+      PMA_PASSWORD: secret
+    depends_on:
+      - db
+    networks:
+      - app-network
+
+volumes:
+  db-data:

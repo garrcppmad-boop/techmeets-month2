@@ -1,0 +1,39 @@
+<?php
+
+declare(strict_types=1);
+
+namespace App\Models;
+
+use Illuminate\Database\Eloquent\Factories\HasFactory;
+use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
+
+class Task extends Model
+{
+    use HasFactory;
+
+    protected $fillable = [
+        'title',
+        'description',
+        'status',
+        'due_date',
+    ];
+
+    protected $casts = [
+        'due_date' => 'date',
+    ];
+
+    public static function statuses(): array
+    {
+        return [
+            'pending'     => '未着手',
+            'in_progress' => '進行中',
+            'done'        => '完了',
+        ];
+    }
+
+    public function user(): BelongsTo
+    {
+        return $this->belongsTo(User::class);
+    }
+}
