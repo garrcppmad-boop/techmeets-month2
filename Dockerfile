@@ -64,11 +64,19 @@ FROM php:${PHP_VERSION}-fpm-alpine AS runtime
 # PHP 拡張のインストール
 #   pdo_mysql: MySQL / RDS への接続
 #   opcache  : PHP のコンパイル結果をキャッシュして高速化
+#   gd       : アップロード画像の WebP 変換（JPEG / PNG / WebP を扱えるように設定）
+#   redis    : Laravel のキャッシュを Redis に保存（phpredis）
 # fcgi はヘルスチェック（PHP-FPM への ping）に使う
 # apk upgrade: ベースイメージ作成後に修正版が出た OS パッケージの脆弱性を取り込む（Trivy で検出）
+# ビルドにだけ必要なパッケージ（.build-deps）は最後に削除してイメージを小さく保つ
 RUN apk upgrade --no-cache \
- && apk add --no-cache fcgi \
- && docker-php-ext-install -j"$(nproc)" pdo_mysql opcache \
+ && apk add --no-cache fcgi libpng libjpeg-turbo libwebp \
+ && apk add --no-cache --virtual .build-deps $PHPIZE_DEPS libpng-dev libjpeg-turbo-dev libwebp-dev \
+ && docker-php-ext-configure gd --with-jpeg --with-webp \
+ && docker-php-ext-install -j"$(nproc)" pdo_mysql opcache gd \
+ && pecl install redis \
+ && docker-php-ext-enable redis \
+ && apk del .build-deps \
  && rm -rf /tmp/* /usr/src/php*
 
 # 本番用の PHP 設定

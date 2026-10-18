@@ -20,3 +20,5 @@ services:
     environment:
       - APP_ENV=production
       - APP_DEBUG=false
+      # キャッシュあり／なしの比較用（CACHE_STORE=null docker compose ... up -d でキャッシュ無効）
+      - CACHE_STORE=${CACHE_STORE:-redis}
