@@ -1,0 +1,22 @@
+# 本番相当の設定でローカル計測するための上書き設定（Lighthouse 計測用）
+#
+# app を本番用の最適化イメージ（直下の Dockerfile）に差し替える。
+#   - ソースコードをイメージ内に持つ（Windows のフォルダ共有を経由しない）
+#   - OPcache の更新チェックなし、debugbar などの開発用パッケージなし
+#
+#   docker build -t laravel-app:prod .
+#   npm run build
+#   docker compose -f docker-compose.yml -f docker-compose.override.yml -f docker-compose.perf.yml up -d app
+#   docker compose -f docker-compose.yml -f docker-compose.override.yml -f docker-compose.perf.yml exec app php artisan optimize
+#
+# 元に戻す: docker compose up -d app
+
+services:
+  app:
+    image: laravel-app:prod
+    build: !reset null
+    volumes: !reset []
+    env_file: .env
+    environment:
+      - APP_ENV=production
+      - APP_DEBUG=false

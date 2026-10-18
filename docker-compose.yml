@@ -29,6 +29,13 @@ services:
     networks:
       - app-network
 
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    networks:
+      - app-network   # app と同じネットワークに入れる（REDIS_HOST=redis で接続できるようにする）
+
 # 仮想ネットワーク（同じネットワーク内のコンテナはサービス名で通信できる）
 networks:
   app-network:

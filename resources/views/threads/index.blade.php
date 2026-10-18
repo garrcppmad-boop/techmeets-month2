@@ -46,12 +46,12 @@
                                     </a>
                                 </td>
                                 <td class="px-6 py-4 text-sm text-gray-500">{{ $thread->user->name }}</td>
-                                <td class="px-6 py-4 text-sm text-gray-500 text-center">{{ $thread->replies->count() }}</td>
-                                <td class="px-6 py-4 text-xs text-gray-400">{{ $thread->created_at->format('m/d H:i') }}</td>
+                                <td class="px-6 py-4 text-sm text-gray-500 text-center">{{ $thread->replies_count }}</td>
+                                <td class="px-6 py-4 text-xs text-gray-500">{{ $thread->created_at->format('m/d H:i') }}</td>
                             </tr>
                         @empty
                             <tr>
-                                <td colspan="4" class="px-6 py-12 text-center text-gray-400">
+                                <td colspan="4" class="px-6 py-12 text-center text-gray-500">
                                     スレッドがありません。
                                     @auth
                                         <a href="{{ route('threads.create') }}" class="text-indigo-600 hover:underline">最初のスレッドを立てる</a>

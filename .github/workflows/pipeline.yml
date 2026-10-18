@@ -193,6 +193,8 @@ jobs:
             git fetch origin ${{ github.ref_name }}
             git checkout ${{ github.ref_name }}
             git pull --ff-only origin ${{ github.ref_name }}
+            # CSS/JS をビルド（public/build を生成）。サーバーに Node.js を入れずに Docker で実行する
+            docker run --rm -v "$PWD":/app -w /app -e CYPRESS_INSTALL_BINARY=0 node:22-alpine sh -c "npm ci --no-audit --no-fund && npm run build"
             docker compose -f docker-compose.yml up -d --build
             docker compose -f docker-compose.yml exec -T app composer install --no-dev --optimize-autoloader --no-interaction
             docker compose -f docker-compose.yml exec -T app php artisan migrate --force
@@ -237,6 +239,8 @@ jobs:
             git fetch origin ${{ github.ref_name }}
             git checkout ${{ github.ref_name }}
             git pull --ff-only origin ${{ github.ref_name }}
+            # CSS/JS をビルド（public/build を生成）。サーバーに Node.js を入れずに Docker で実行する
+            docker run --rm -v "$PWD":/app -w /app -e CYPRESS_INSTALL_BINARY=0 node:22-alpine sh -c "npm ci --no-audit --no-fund && npm run build"
             docker compose -f docker-compose.yml up -d --build
             docker compose -f docker-compose.yml exec -T app composer install --no-dev --optimize-autoloader --no-interaction
             docker compose -f docker-compose.yml exec -T app php artisan migrate --force

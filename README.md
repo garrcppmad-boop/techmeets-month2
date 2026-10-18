@@ -482,7 +482,12 @@ Location: https://sk-week13.com/
 ## テストの実行方法
 
 テストは SQLite のインメモリDB（`phpunit.xml` で `DB_CONNECTION=sqlite` / `DB_DATABASE=:memory:` を
-`force="true"` 指定）で実行するため、開発用の MySQL のデータには影響しない。
+`<env>` と `<server>` の両方で `force="true"` 指定）で実行するため、開発用の MySQL のデータには影響しない。
+
+> **訂正（Week17 で発覚）**: 当初は `<env>` だけで指定していたが、Laravel は `$_SERVER` の値を優先して読む。
+> Docker の app コンテナには `DB_CONNECTION=mysql` が環境変数で渡されているため、**ローカルのテストは実際には
+> 開発用 MySQL に接続しており、`RefreshDatabase` で毎回データが消えていた**。`<server>` を追加して修正した。
+> （GitHub Actions は環境変数が無いので最初から SQLite で動いていた）
 
 ```bash
 # 全テスト実行
@@ -928,3 +933,99 @@ http://localhost:3000 → 左メニュー **Explore** → データソース **L
 同じ構成を EC2 で動かすこともできるが、サーバーが落ちるとログも見られなくなる。
 本番では Docker の `awslogs` ログドライバーで **CloudWatch Logs** に送る方法が適している
 （`docker-compose.yml` の各サービスに `logging: driver: awslogs` を設定し、EC2 の IAM ロールに書き込み権限を付与）。
+
+---
+
+# Week17：パフォーマンス計測と改善
+
+## 結果（Lighthouse・モバイル）
+
+| ページ | | Performance | Accessibility | Best Practices | SEO | FCP | LCP | TBT | サーバー応答 |
+|---|---|---|---|---|---|---|---|---|---|
+| `/posts` | **before** | 54 | 83 | 100 | 82 | 7.0 s | 7.0 s | 180 ms | 22,340 ms |
+| | after（開発環境のまま） | 64 | 95 | 100 | 91 | 4.7 s | 4.7 s | 80 ms | 19,410 ms |
+| | **after（本番構成）** | **99** | **100** | **100** | **100** | 1.8 s | 1.8 s | 0 ms | **60 ms** |
+| `/threads` | **before** | 46 | 84 | 100 | 82 | 6.5 s | 6.5 s | 460 ms | 22,480 ms |
+| | after（開発環境のまま） | 65 | 95 | 100 | 91 | 4.5 s | 4.5 s | 110 ms | 10,340 ms |
+| | **after（本番構成）** | **99** | **100** | **100** | **100** | 1.7 s | 1.7 s | 0 ms | **80 ms** |
+
+- レポート: `docs/lighthouse/`（`before-*` / `after-dev-*` / `after-*` の `.report.html` をブラウザで開く）
+- 計測データ: `PerformanceSeeder` で 投稿 20,000件・スレッド 2,000件・レス 20,000件・商品 2,000件・ユーザー 100人
+- 「本番構成」は `docker-compose.perf.yml` で app を本番用イメージ（Week16 の Dockerfile）に差し替え、`php artisan optimize` したもの
+
+```bash
+docker compose exec app php artisan db:seed --class=PerformanceSeeder   # 計測用データ
+npx lighthouse http://localhost/posts --view                            # 計測
+```
+
+## 1. N+1 問題（eager loading）
+
+### 特定方法
+- `AppServiceProvider` に `Model::preventLazyLoading()` を追加（本番以外）。一覧で取得したモデルのリレーションを
+  eager loading せずに参照すると例外になるので、N+1 を書いた時点で気付ける
+- 各ページの SQL をすべて記録し、クエリ数と時間を比較した
+
+### 結果
+主要ページ（投稿・掲示板）は Week8 の時点で `with()` による eager loading を実装済みで、N+1 は残っていなかった。
+eager loading の効果を確認するため、同じ一覧を書き方を変えて取得し比較した。
+
+| 一覧 | 書き方 | クエリ数 | DB時間 |
+|---|---|---|---|
+| `/posts`（10件） | eager loading なし（N+1） | 12 | 17.7 ms |
+| | `with('user')` | **3** | **7.2 ms** |
+| `/threads`（20件） | eager loading なし（N+1） | 42 | 50.7 ms |
+| | `with(['user', 'replies'])` ※修正前 | 4 | 8.4 ms |
+| | `with('user')->withCount('replies')` ※修正後 | **3** | **5.9 ms** |
+
+### 修正したもの：掲示板一覧の読み込みすぎ
+`/threads` はレス「数」を表示するだけなのに、`with('replies')` で**全レスの本文（20件で190行）**を読み込んでいた。
+`withCount('replies')` に変更し、件数だけを SQL で数えるようにした（ビューは `$thread->replies_count`）。
+
+## 2. スロークエリ（インデックス）
+
+一覧ページの `latest()`（`ORDER BY created_at DESC`）に使えるインデックスが無かった。
+`EXPLAIN ANALYZE` で確認すると、10件取るために**全件を読んで並び替えて**いた。
+
+```sql
+select * from posts order by created_at desc limit 10;
+```
+
+| | 実行計画 | 読んだ行数 | 実行時間 |
+|---|---|---|---|
+| before | Table scan on posts → Sort | 20,000 行 | **69.1 ms** |
+| after | Index scan on posts using posts_created_at_index (reverse) | 10 行 | **0.27 ms** |
+
+マイグレーション `xxxx_zz_add_created_at_indexes_for_listing.php` で以下を追加した（約250倍高速化）。
+
+| テーブル | インデックス | 対象のクエリ |
+|---|---|---|
+| posts / threads / products | `created_at` | 一覧の新しい順（`latest()`） |
+| replies | `(thread_id, created_at)` | スレッド詳細のレス一覧（`where thread_id = ? order by created_at`） |
+
+## 3. フロントエンド（Lighthouse の指摘への対応）
+
+| 指摘 | 対応 |
+|---|---|
+| Render-blocking resources / Reduce unused JavaScript | Tailwind の CDN（ブラウザ上で CSS を生成する 124KB の JS）をやめ、Vite でビルドした CSS（gzip 後 7KB）に変更 |
+| Enable text compression | Nginx で gzip を有効化 |
+| Serve static assets with an efficient cache policy | ビルド済みファイル（`/build/`）に1年間のキャッシュを設定（ファイル名にハッシュが付くので安全） |
+| Buttons / Links do not have an accessible name | メニューボタンとロゴのリンクに `aria-label` を追加 |
+| Insufficient color contrast | 日付などの文字色を `text-gray-400` → `text-gray-500` に変更 |
+| Document does not have a meta description | レイアウトに `<meta name="description">` を追加 |
+
+CDN をやめたことで、これまで読み込まれていなかった `app.js`（Alpine.js）も読み込まれるようになり、
+スマホ表示のメニューボタンが動くようになった。
+
+## 4. サーバー応答時間（22秒 → 0.06秒）
+
+開発環境では1ページ約20秒かかっていた。原因を調べると、SQL や処理自体は 0.2秒程度で、残りは
+**Windows のフォルダを Docker と共有していることによるファイル読み込みの遅さ**だった
+（Laravel は1リクエストで1,000以上の PHP ファイルを読む。`.env` の読み込みだけで 0.65秒）。
+本番用イメージ（コードをイメージ内に持つ・OPcache・`php artisan optimize`）で動かすと 0.06〜0.08秒になった。
+
+## 注意点（このWeekの変更で必要になったこと）
+- **CSS/JS のビルドが必要になった**: 画面を表示する前に `npm run build`（開発中は `npm run dev`）を実行する
+- **デプロイ**: `pipeline.yml` のデプロイ処理に、サーバー上で `npm run build` する手順を追加した
+- **テスト**: `tests/TestCase.php` で `withoutVite()` を呼び、ビルドなしでもテストできるようにした
+- 本番用 Dockerfile の CSS ビルドに `tailwind.config.js` / `postcss.config.js` が渡っておらず、
+  Tailwind が実行されていなかった不具合を修正した

@@ -33,7 +33,7 @@
                     <p class="mt-2 text-gray-600 text-sm leading-relaxed">
                         {{ Str::limit($post->content, 120) }}
                     </p>
-                    <p class="mt-3 text-xs text-gray-400">
+                    <p class="mt-3 text-xs text-gray-500">
                         {{ $post->user->name }} ・ {{ $post->created_at->format('Y年m月d日') }}
                     </p>
                 </div>

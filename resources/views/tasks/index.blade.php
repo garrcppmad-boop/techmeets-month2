@@ -34,7 +34,7 @@
                                 {{ $statuses[$task->status] }}
                             </span>
                             @if ($task->due_date)
-                                <span class="text-xs text-gray-400">
+                                <span class="text-xs text-gray-500">
                                     期限: {{ $task->due_date->format('Y年m月d日') }}
                                 </span>
                             @endif

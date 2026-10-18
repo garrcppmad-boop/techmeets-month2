@@ -17,7 +17,7 @@
                     {{ $post->category }}
                 </span>
                 <h1 class="mt-3 text-2xl font-bold text-gray-900">{{ $post->title }}</h1>
-                <p class="mt-1 text-sm text-gray-400">
+                <p class="mt-1 text-sm text-gray-500">
                     投稿者: {{ $post->user->name }} ・ {{ $post->created_at->format('Y年m月d日 H:i') }}
                 </p>
 

@@ -48,8 +48,12 @@ COPY package.json package-lock.json ./
 # Cypress 本体（数百MB）のダウンロードはビルドに不要なのでスキップ
 RUN CYPRESS_INSTALL_BINARY=0 npm ci --no-audit --no-fund
 
-COPY vite.config.js ./
+COPY vite.config.js tailwind.config.js postcss.config.js ./
 COPY resources ./resources
+# Tailwind が使用クラスを探す対象（tailwind.config.js の content）に Laravel のページネーションの
+# テンプレートも含まれるため、vendor ステージからコピーしておく
+COPY --from=vendor /app/vendor/laravel/framework/src/Illuminate/Pagination/resources/views \
+     ./vendor/laravel/framework/src/Illuminate/Pagination/resources/views
 RUN npm run build
 
 # ---------------------------------------------------------------

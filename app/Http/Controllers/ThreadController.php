@@ -12,7 +12,9 @@ class ThreadController extends Controller
     // 未ログインでも閲覧可能
     public function index()
     {
-        $threads = Thread::with(['user', 'replies'])
+        // 一覧ではレス数しか表示しないので、レス本体は読み込まず件数だけ取得する（withCount）
+        $threads = Thread::with('user')
+            ->withCount('replies')
             ->latest()
             ->paginate(20);
 

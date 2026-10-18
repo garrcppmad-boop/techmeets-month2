@@ -42,10 +42,10 @@
                         {{ $task->description }}
                     </div>
                 @else
-                    <p class="text-gray-400 text-sm border-t pt-4">説明なし</p>
+                    <p class="text-gray-500 text-sm border-t pt-4">説明なし</p>
                 @endif
 
-                <div class="text-xs text-gray-400 border-t pt-4">
+                <div class="text-xs text-gray-500 border-t pt-4">
                     作成: {{ $task->created_at->format('Y年m月d日 H:i') }}
                     @if ($task->updated_at->ne($task->created_at))
                         ・更新: {{ $task->updated_at->format('Y年m月d日 H:i') }}

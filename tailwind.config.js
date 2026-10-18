@@ -5,7 +5,7 @@ import forms from '@tailwindcss/forms';
 export default {
     content: [
         './vendor/laravel/framework/src/Illuminate/Pagination/resources/views/*.blade.php',
-        './storage/framework/views/*.php',
+        // storage/framework/views（Blade のキャッシュ）は環境ごとに中身が違い、ビルド結果が変わるので対象外
         './resources/views/**/*.blade.php',
     ],
 
