@@ -1029,3 +1029,78 @@ CDN をやめたことで、これまで読み込まれていなかった `app.j
 - **テスト**: `tests/TestCase.php` で `withoutVite()` を呼び、ビルドなしでもテストできるようにした
 - 本番用 Dockerfile の CSS ビルドに `tailwind.config.js` / `postcss.config.js` が渡っておらず、
   Tailwind が実行されていなかった不具合を修正した
+
+## 練習課題1：N+1 問題の解消（クエリ数の before / after）
+
+PR 本文（`docs/pr/week17-performance.md`）に記録した。セッションの読み書き（2クエリ）を除いた数。
+
+| 一覧 | 書き方 | クエリ数 | DB時間 |
+|---|---|---|---|
+| `/posts`（10件） | before: eager loading なし（N+1） | 12 | 16.1 ms |
+| | after: `with('user')` | **3** | **7.7 ms** |
+| `/threads`（20件） | before: eager loading なし（N+1） | 42 | 52.0 ms |
+| | before: `with(['user', 'replies'])`（レス本文 197行を読み込み） | 4 | 7.7 ms |
+| | after: `with('user')->withCount('replies')` | **3** | **4.5 ms** |
+
+## 練習課題2：キャッシュ導入（投稿一覧）
+
+`PostRepository::getPublished()` の結果を **Redis** にキャッシュした（画面 `/posts` と API `/api/posts` の両方に効く）。
+
+- キャッシュキー: `posts:index:v{世代番号}:page:{ページ番号}`（有効期間 10分）
+- 投稿の作成・更新・削除時は、`Post` モデルの `saved` / `deleted` イベントで**世代番号を1つ進める**。
+  ページごとにキーが違うため1つずつ消すのは難しいが、世代番号が変われば全ページの古いキャッシュが使われなくなる
+- 使うために phpredis 拡張を Dockerfile（開発用・本番用）に追加し、`.env` を `CACHE_STORE=redis` / `REDIS_HOST=redis` にした
+
+| | キャッシュなし | キャッシュあり（Redis） |
+|---|---|---|
+| 1ページ目の一覧取得 | 8.23 ms / 3クエリ | **0.94 ms / 0クエリ** |
+| 500ページ目の一覧取得 | 189.69 ms / 3クエリ | **1.17 ms / 0クエリ** |
+| HTTP `/posts?page=500`（30回の中央値） | 458 ms | **270 ms** |
+| HTTP `/posts`（30回の中央値） | 267〜285 ms | 269 ms |
+
+- 1ページ目はインデックス追加で既に速いため、HTTP 全体では差が出にくい。後ろのページほど効果が大きい
+- HTTP の時間には Docker Desktop（Windows）の固定オーバーヘッドが約230ms 含まれる（何もしない `/up` でも 240ms）
+- 比較は `docker-compose.perf.yml` で `CACHE_STORE=null`（キャッシュ無効）と `redis` を切り替えて行った
+- テスト: 2回目は SQL を発行しない／作成・削除するとキャッシュが更新される／ページごとに別のキャッシュ、の4件を追加
+
+## 練習課題3：画像最適化（WebP 変換・CDN 配信）
+
+### WebP 変換
+`App\Services\ImageOptimizer` を作成し、商品画像のアップロード時（登録・更新）に使うようにした。
+
+- JPEG / PNG / GIF / WebP を読み込み、**WebP（品質80）**で保存
+- 横幅が **1200px** を超える画像は縮小（縦横比は維持）
+- ファイル名は UUID（毎回ユニーク）。S3 に `Content-Type: image/webp` と
+  `Cache-Control: public, max-age=31536000, immutable` を付けて保存し、CDN・ブラウザに1年間キャッシュさせる
+- GD 拡張を JPEG / WebP 対応でビルドするよう Dockerfile を変更（これまでの GD は PNG しか扱えなかった）
+
+| 元画像 | 元サイズ | WebP | 削減率 |
+|---|---|---|---|
+| 写真 3000×2000 JPEG | 950.5 KB | 195.0 KB（1200×800） | **79%** |
+| 写真 1600×1067 JPEG | 404.4 KB | 244.0 KB（1200×800） | **40%** |
+| 写真 1600×1067 PNG | 3,392.3 KB | 244.0 KB（1200×800） | **93%** |
+
+テスト: JPEG・PNG の変換、縮小（境界値 1200px ちょうどは縮小しない）、サイズが小さくなること、画像以外は例外、の7件を追加。
+
+### CloudFront 経由の配信
+`.env` の `AWS_URL` に CloudFront のドメインを設定すると、`Storage::disk('s3')->url()` が CloudFront の URL を返す
+（ビューの変更は不要）。
+
+1. **CloudFront ディストリビューションを作成**（AWS コンソール → CloudFront → ディストリビューションを作成）
+   - オリジン: 画像を保存している S3 バケット
+   - オリジンアクセス: **Origin access control（OAC）** を作成して選択（S3 を直接公開しない）
+   - キャッシュポリシー: `CachingOptimized`（S3 に付けた `Cache-Control` に従ってキャッシュ）
+   - ビューワープロトコル: `Redirect HTTP to HTTPS`
+2. **S3 のバケットポリシーを更新**（作成画面に表示されるポリシーをコピーして貼り付け）。
+   CloudFront からの読み取りだけを許可し、「パブリックアクセスをすべてブロック」はオンのままにする
+3. **アプリに設定**
+   ```env
+   AWS_URL=https://dxxxxxxxxxxxxx.cloudfront.net
+   ```
+   ```bash
+   docker compose exec app php artisan config:clear
+   ```
+4. **確認**: 商品画像の URL が `https://dxxxx.cloudfront.net/products/xxxx.webp` になり、
+   `curl -I` で `content-type: image/webp`、2回目以降に `x-cache: Hit from cloudfront` が返る
+
+> 既にアップロード済みの画像（JPEG / PNG）はそのまま表示される。WebP に揃える場合は再アップロードする。
