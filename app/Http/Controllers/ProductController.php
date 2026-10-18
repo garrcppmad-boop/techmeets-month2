@@ -5,11 +5,16 @@ declare(strict_types=1);
 namespace App\Http\Controllers;
 
 use App\Models\Product;
+use App\Services\ImageOptimizer;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Storage;
 
 class ProductController extends Controller
 {
+    public function __construct(
+        private readonly ImageOptimizer $imageOptimizer,
+    ) {}
+
     public function index()
     {
         $products = Product::latest()->paginate(10);
@@ -39,7 +44,7 @@ class ProductController extends Controller
         ]);
 
         if ($request->hasFile('image')) {
-            $validated['image_path'] = $request->file('image')->store('products', 's3');
+            $validated['image_path'] = $this->imageOptimizer->storeAsWebp($request->file('image'), 'products');
         }
         unset($validated['image']);
 
@@ -68,7 +73,7 @@ class ProductController extends Controller
             if ($product->image_path) {
                 Storage::disk('s3')->delete($product->image_path);
             }
-            $validated['image_path'] = $request->file('image')->store('products', 's3');
+            $validated['image_path'] = $this->imageOptimizer->storeAsWebp($request->file('image'), 'products');
         }
         unset($validated['image']);
 

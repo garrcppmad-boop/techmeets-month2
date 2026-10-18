@@ -94,6 +94,7 @@ class ProductControllerTest extends TestCase
 
         $product = Product::where('name', '画像商品')->first();
         $this->assertNotNull($product->image_path);
+        $this->assertStringEndsWith('.webp', $product->image_path); // PNG でアップロードしても WebP で保存
         Storage::disk('s3')->assertExists($product->image_path);
     }
 
@@ -130,6 +131,7 @@ class ProductControllerTest extends TestCase
 
         Storage::disk('s3')->assertMissing($oldPath);
         $product->refresh();
+        $this->assertStringEndsWith('.webp', $product->image_path);
         Storage::disk('s3')->assertExists($product->image_path);
     }
 
